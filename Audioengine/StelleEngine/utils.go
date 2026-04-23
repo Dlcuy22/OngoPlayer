@@ -1,15 +1,20 @@
-// AudioEngine/StelleEngine/utils.go
-// This file contains audio processing utilities for the engine, primarily focused on
-// format conversion, resampling, and channel manipulation to prepare decoded audio for playback.
+// Audioengine/StelleEngine/utils.go
+// Audio processing utilities for format conversion, resampling, and channel manipulation.
+// These are used by all codec ChunkDecoders to normalize decoded audio for the SDL pipeline.
 //
-// Functions:
-//   - ConvertInt16ToFloat32: Converts a slice of int16 audio samples to a slice of float32 samples [-1.0, 1.0].
-//   - ConvertInt16BytesToFloat32: Converts a byte slice containing little-endian int16 audio samples to a slice of float32 samples.
-//   - Resample: Performs linear interpolation resampling on a slice of float32 samples from any rate to a target rate.
-//   - ConvertChannels: Converts a slice of float32 samples between different channel counts (e.g., Mono to Stereo).
+// Dependencies:
+//   - None (pure Go math)
 
 package stelleengine
 
+/*
+ConvertInt16ToFloat32 converts a slice of int16 audio samples to float32 [-1.0, 1.0].
+
+	params:
+	      in: raw int16 PCM samples
+	returns:
+	      []float32
+*/
 func ConvertInt16ToFloat32(in []int16) []float32 {
 	out := make([]float32, len(in))
 	for i, v := range in {
@@ -18,6 +23,15 @@ func ConvertInt16ToFloat32(in []int16) []float32 {
 	return out
 }
 
+/*
+ConvertInt16BytesToFloat32 converts a byte slice containing little-endian
+int16 audio samples to a slice of float32 [-1.0, 1.0].
+
+	params:
+	      in: raw bytes (2 bytes per sample, little-endian)
+	returns:
+	      []float32
+*/
 func ConvertInt16BytesToFloat32(in []byte) []float32 {
 	out := make([]float32, len(in)/2)
 	for i := 0; i < len(out); i++ {
@@ -27,6 +41,17 @@ func ConvertInt16BytesToFloat32(in []byte) []float32 {
 	return out
 }
 
+/*
+Resample performs linear interpolation resampling on interleaved float32 samples.
+
+	params:
+	      in:       input samples (interleaved)
+	      inRate:   source sample rate
+	      outRate:  target sample rate
+	      channels: number of interleaved channels
+	returns:
+	      []float32: resampled output
+*/
 func Resample(in []float32, inRate, outRate, channels int) []float32 {
 	if inRate == outRate || len(in) == 0 {
 		return in
@@ -64,15 +89,23 @@ func Resample(in []float32, inRate, outRate, channels int) []float32 {
 	return out
 }
 
-// ConvertChannels converts audio samples between different channel layouts.
-// Currently supports Mono (1) to Stereo (2) and Stereo (2) to Mono (1).
+/*
+ConvertChannels converts audio samples between different channel layouts.
+
+	params:
+	      in:    input samples (interleaved)
+	      inCh:  source channel count
+	      outCh: target channel count
+	returns:
+	      []float32
+	Note: Currently supports Mono (1) to Stereo (2) and Stereo (2) to Mono (1).
+*/
 func ConvertChannels(in []float32, inCh, outCh int) []float32 {
 	if inCh == outCh || len(in) == 0 {
 		return in
 	}
 
 	if inCh == 1 && outCh == 2 {
-		// Mono to Stereo: duplicate samples
 		out := make([]float32, len(in)*2)
 		for i, s := range in {
 			out[2*i] = s
@@ -82,7 +115,6 @@ func ConvertChannels(in []float32, inCh, outCh int) []float32 {
 	}
 
 	if inCh == 2 && outCh == 1 {
-		// Stereo to Mono: average left and right
 		outFrames := len(in) / 2
 		out := make([]float32, outFrames)
 		for i := 0; i < outFrames; i++ {

@@ -1,12 +1,11 @@
-// AudioEngine/StelleEngine/stelle.go
+// Audioengine/StelleEngine/stelle.go
 // Native Go audio engine implementation using SDL3.
-// This file manages playback, state, and decoder selection.
+// Manages playback lifecycle, state machine, decoder selection, and SDL stream I/O.
 //
-// Types:
-//   - StelleEngine: implements AudioEngine.Engine interface
-//
-// Functions:
-//   - NewStelleEngine: creates a new Stelle engine instance
+// Dependencies:
+//   - Audioengine: Engine interface and PlaybackState enum
+//   - purego-sdl3/sdl: SDL3 audio device, stream, and callback API
+//   - streaming.go: StreamingAudioSource, RingBuffer, openFn
 
 package stelleengine
 
@@ -22,7 +21,6 @@ import (
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
 
-// StelleEngine implements the AudioEngine.Engine interface using native Go + SDL3.
 type StelleEngine struct {
 	mu         sync.Mutex
 	state      AudioEngine.PlaybackState
@@ -39,7 +37,7 @@ NewStelleEngine creates a new Stelle engine instance.
 	params:
 	      volume: default volume of the audio engine (0.0 - 1.0)
 	returns:
-		  *stelleengine.StelleEngine
+	      *StelleEngine
 */
 func NewStelleEngine(volume float32) *StelleEngine {
 	if !sdl.Init(sdl.InitAudio) {
@@ -53,8 +51,15 @@ func NewStelleEngine(volume float32) *StelleEngine {
 	}
 }
 
-// openFnForFile picks the right openFn based on file extension.
-// To add a new codec: add a case here and implement ChunkDecoder for it.
+/*
+openFnForFile picks the right openFn based on file extension.
+
+	params:
+	      filePath: path to the audio file
+	returns:
+	      openFn, error
+	Note: To add a new codec, add a case here and implement ChunkDecoder for it.
+*/
 func openFnForFile(filePath string) (openFn, error) {
 	ext := strings.ToLower(filepath.Ext(filePath))
 	switch ext {
@@ -69,7 +74,15 @@ func openFnForFile(filePath string) (openFn, error) {
 	}
 }
 
-// audioCallback is the SDL audio callback that feeds samples from the ring buffer to the audio device
+/*
+audioCallback is the SDL audio callback that feeds samples from the
+ring buffer to the audio device. Called by SDL on its audio thread.
+
+	params:
+	      userdata:         pointer to the StreamingAudioSource
+	      stream:           the SDL audio stream requesting data
+	      additionalAmount: number of bytes SDL wants
+*/
 func audioCallback(userdata unsafe.Pointer, stream *sdl.AudioStream, additionalAmount, _ int32) {
 	if additionalAmount <= 0 {
 		return
@@ -89,7 +102,6 @@ func audioCallback(userdata unsafe.Pointer, stream *sdl.AudioStream, additionalA
 
 	n := src.ring.Read(outBuf)
 
-	// Track playback position: samples read / channels = frames consumed
 	if n > 0 {
 		src.AdvanceFrames(int64(n / src.channels))
 
@@ -99,7 +111,6 @@ func audioCallback(userdata unsafe.Pointer, stream *sdl.AudioStream, additionalA
 		}
 	}
 
-	// Zero-fill the tail if the ring was starved (buffering gap or near EOF)
 	for i := n; i < nSamples; i++ {
 		outBuf[i] = 0
 	}
@@ -108,8 +119,10 @@ func audioCallback(userdata unsafe.Pointer, stream *sdl.AudioStream, additionalA
 	sdl.PutAudioStreamData(stream, ptr, int32(nSamples*4))
 }
 
-// monitorCompletion runs in a goroutine to detect when the decoder goroutine
-// has finished AND SDL has drained its internal queue
+/*
+monitorCompletion runs in a goroutine to detect when the decoder goroutine
+has finished AND SDL has drained its internal queue, then fires onComplete.
+*/
 func (e *StelleEngine) monitorCompletion() {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
@@ -122,9 +135,6 @@ func (e *StelleEngine) monitorCompletion() {
 			if e.streamSrc == nil {
 				continue
 			}
-			// Two conditions must both be true before firing onComplete:
-			// 1. Decoder goroutine hit EOF and set done
-			// 2. Ring buffer is fully drained (SDL has consumed everything)
 			if e.streamSrc.done.Load() && e.streamSrc.ring.Available() == 0 {
 				queued := sdl.GetAudioStreamQueued(e.stream)
 				if queued <= 0 {
@@ -143,15 +153,21 @@ func (e *StelleEngine) monitorCompletion() {
 	}
 }
 
-// Play starts playing the audio file from the given position.
-// seekTo is in seconds, volume is 0–100.
+/*
+Play starts playing the audio file from the given position.
+
+	params:
+	      filePath: path to the audio file
+	      seekTo:   start position in seconds
+	      volume:   playback volume (0-100)
+	returns:
+	      error
+*/
 func (e *StelleEngine) Play(filePath string, seekTo float64, volume int) error {
-	// Stop any current playback before starting new one
 	e.mu.Lock()
 	e.stopInternal()
 	e.mu.Unlock()
 
-	// Resolve the openFn for this file type
 	open, err := openFnForFile(filePath)
 	if err != nil {
 		return err
@@ -189,7 +205,12 @@ func (e *StelleEngine) Play(filePath string, seekTo float64, volume int) error {
 	return nil
 }
 
-// Stop stops playback and resets state
+/*
+Stop stops playback and resets state.
+
+	returns:
+	      error
+*/
 func (e *StelleEngine) Stop() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -198,15 +219,19 @@ func (e *StelleEngine) Stop() error {
 	return nil
 }
 
+/*
+stopInternal tears down the current playback session.
+Closes the decoder goroutine, destroys the SDL stream, and nils references.
+
+	Note: Must be called with e.mu held.
+*/
 func (e *StelleEngine) stopInternal() {
 	select {
 	case <-e.stopCh:
-
 	default:
 		close(e.stopCh)
 	}
 
-	// Shut down the decoder goroutine via the ring's stopCh
 	if e.streamSrc != nil {
 		select {
 		case <-e.streamSrc.stopCh:
@@ -223,7 +248,12 @@ func (e *StelleEngine) stopInternal() {
 	}
 }
 
-// Pause pauses playback, preserving the current ring buffer state.
+/*
+Pause pauses playback, preserving the current ring buffer state.
+
+	returns:
+	      error
+*/
 func (e *StelleEngine) Pause() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -235,7 +265,15 @@ func (e *StelleEngine) Pause() error {
 	return nil
 }
 
-// Resume resumes a paused stream. seekTo repositions if non-zero.
+/*
+Resume resumes a paused stream. Optionally repositions if seekTo is non-zero.
+
+	params:
+	      seekTo: position in seconds (0 = resume from current)
+	      volume: playback volume (0-100)
+	returns:
+	      error
+*/
 func (e *StelleEngine) Resume(seekTo float64, volume int) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -267,7 +305,15 @@ func (e *StelleEngine) Resume(seekTo float64, volume int) error {
 	return nil
 }
 
-// Seek jumps to the specified position while maintaining current playback state.
+/*
+Seek jumps to the specified position while maintaining current playback state.
+
+	params:
+	      position: target position in seconds
+	      volume:   playback volume (0-100)
+	returns:
+	      error
+*/
 func (e *StelleEngine) Seek(position float64, volume int) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -279,10 +325,8 @@ func (e *StelleEngine) Seek(position float64, volume int) error {
 	e.volume = float32(volume) / 100.0
 	e.streamSrc.SetVolume(e.volume)
 
-	// Send seek to the decoder goroutine (non-blocking, latest wins)
 	e.streamSrc.Seek(position)
 
-	// Clear SDL's internal buffer so stale pre-seek audio isn't heard
 	if e.stream != nil {
 		sdl.ClearAudioStream(e.stream)
 	}
@@ -290,21 +334,36 @@ func (e *StelleEngine) Seek(position float64, volume int) error {
 	return nil
 }
 
-// GetState returns the current playback state.
+/*
+GetState returns the current playback state.
+
+	returns:
+	      AudioEngine.PlaybackState
+*/
 func (e *StelleEngine) GetState() AudioEngine.PlaybackState {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.state
 }
 
-// SetOnComplete sets the callback invoked when playback finishes naturally.
+/*
+SetOnComplete sets the callback invoked when playback finishes naturally.
+
+	params:
+	      callback: function to call on completion
+*/
 func (e *StelleEngine) SetOnComplete(callback func()) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.onComplete = callback
 }
 
-// GetPosition returns the current playback position in seconds.
+/*
+GetPosition returns the current playback position in seconds.
+
+	returns:
+	      float64
+*/
 func (e *StelleEngine) GetPosition() float64 {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -315,7 +374,12 @@ func (e *StelleEngine) GetPosition() float64 {
 	return e.streamSrc.Position()
 }
 
-// GetDuration returns the total duration of the current track in seconds.
+/*
+GetDuration returns the total duration of the current track in seconds.
+
+	returns:
+	      float64
+*/
 func (e *StelleEngine) GetDuration() float64 {
 	e.mu.Lock()
 	defer e.mu.Unlock()

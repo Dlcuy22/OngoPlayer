@@ -1,26 +1,25 @@
-// AudioEngine/StelleEngine/opus.go
-// Opus decoder implementation using the real Xiph libopusfile via purego.
-// Requires libopusfile-0.dll, libopus-0.dll, and libogg-0.dll at runtime.
+// Audioengine/StelleEngine/opus.go
+// Opus decoder implementation using Xiph libopusfile via purego.
+// Provides OpusChunkDecoder which implements ChunkDecoder and SeekableChunkDecoder.
 //
-// Types:
-//   - OpusDecoder: implements the Decoder interface for Opus files
+// Dependencies:
+//   - internal/shared: cross-platform dynamic library loading
+//   - purego: register C function symbols without cgo
 //
-// Functions:
-//   - NewOpusDecoder: creates a new Opus decoder instance
-//   - Name: returns the decoder name
-//   - CanHandle: returns true for .opus and .ogg extensions
-//   - Decode: loads and decodes an Opus file into PCM samples via libopusfile
+// Runtime Libraries:
+//   - Linux:   libopusfile.so.0
+//   - Windows: libopusfile-0.dll
+//   - macOS:   libopusfile.0.dylib
 
 package stelleengine
 
 import (
 	"fmt"
+	"io"
+	"runtime"
 	"strings"
 	"sync"
 	"unsafe"
-
-	"io"
-	"runtime"
 
 	shared "github.com/dlcuy22/OngoPlayer/internal/shared"
 	"github.com/ebitengine/purego"
@@ -39,6 +38,10 @@ var (
 	opPcmTell         func(of uintptr) int64
 )
 
+/*
+initOpusFile loads libopusfile and registers all required C function symbols.
+Called once via sync.Once on first use.
+*/
 func initOpusFile() error {
 	opusfileOnce.Do(func() {
 		var filename string
@@ -69,87 +72,36 @@ func initOpusFile() error {
 
 type OpusDecoder struct{}
 
+/*
+NewOpusDecoder creates a new Opus decoder instance.
+
+	returns:
+	      *OpusDecoder
+*/
 func NewOpusDecoder() *OpusDecoder {
 	return &OpusDecoder{}
 }
 
-func (d *OpusDecoder) Name() string {
-	return "opus"
-}
+func (d *OpusDecoder) Name() string { return "opus" }
 
 func (d *OpusDecoder) CanHandle(ext string) bool {
 	lower := strings.ToLower(ext)
 	return lower == ".opus" || lower == ".ogg"
 }
 
-// func (d *OpusDecoder) Decode(path string) (*AudioSource, error) {
-// 	if err := initOpusFile(); err != nil {
-// 		return nil, err
-// 	}
-
-// 	// op_open_file expects a null-terminated C string
-// 	cPath := append([]byte(path), 0)
-// 	var opErr int32
-
-// 	of := opOpenFile(&cPath[0], &opErr)
-// 	if of == 0 {
-// 		return nil, fmt.Errorf("op_open_file failed with error code %d", opErr)
-// 	}
-// 	defer opFree(of)
-
-// 	// Get total PCM samples for pre-allocation (-1 = entire stream)
-// 	totalSamples := opPcmTotal(of, -1)
-
-// 	// op_read_float_stereo always outputs stereo (2 channels)
-// 	channels := 2
-// 	var allSamples []float32
-
-// 	if totalSamples > 0 {
-// 		// Pre-allocate: totalSamples is per-channel
-// 		allSamples = make([]float32, 0, int(totalSamples)*channels)
-// 	}
-
-// 	// Read in chunks op_read_float_stereo returns samples per channel per call
-// 	// Buffer: 120ms at 48kHz stereo = 5760 * 2 = 11520 floats
-// 	buf := make([]float32, 11520)
-
-// 	for {
-// 		// n = number of samples per channel read, 0 = EOF, <0 = error
-// 		n := opReadFloatStereo(of, &buf[0], int32(len(buf)))
-// 		if n == 0 {
-// 			break
-// 		}
-// 		if n < 0 {
-// 			// OP_HOLE (-3) means a gap in the data, skip it
-// 			if n == -3 {
-// 				continue
-// 			}
-// 			return nil, fmt.Errorf("op_read_float_stereo error: %d", n)
-// 		}
-
-// 		// n samples per channel * 2 channels = total float32s
-// 		totalFloats := int(n) * channels
-// 		allSamples = append(allSamples, buf[:totalFloats]...)
-// 	}
-
-// 	if len(allSamples) == 0 {
-// 		return nil, fmt.Errorf("no audio data decoded from opus file")
-// 	}
-
-// 	return &AudioSource{
-// 		samples:    allSamples,
-// 		posFrame:   0,
-// 		channels:   DefaultChannels,
-// 		sampleRate: DefaultSampleRate,
-// 	}, nil
-// }
-
 type OpusChunkDecoder struct {
 	of          uintptr
 	totalFrames int64
 }
 
-// openOpusChunkDecoder is the openFn for opus, passed to NewStreamingSource.
+/*
+openOpusChunkDecoder returns an openFn factory for Opus files.
+
+	params:
+	      path: filesystem path to the .opus file
+	returns:
+	      openFn
+*/
 func openOpusChunkDecoder(path string) openFn {
 	return func(seekTo float64) (ChunkDecoder, error) {
 		if err := initOpusFile(); err != nil {
@@ -178,6 +130,15 @@ func openOpusChunkDecoder(path string) openFn {
 	}
 }
 
+/*
+ReadSamples decodes interleaved stereo float32 PCM from the Opus stream.
+
+	params:
+	      buf: destination buffer for interleaved samples
+	returns:
+	      int:   number of float32 values written
+	      error: io.EOF on end of stream
+*/
 func (c *OpusChunkDecoder) ReadSamples(buf []float32) (int, error) {
 	n := opReadFloatStereo(c.of, &buf[0], int32(len(buf)))
 	if n == 0 {
@@ -192,6 +153,14 @@ func (c *OpusChunkDecoder) ReadSamples(buf []float32) (int, error) {
 	return int(n) * DefaultChannels, nil
 }
 
+/*
+SeekToFrame seeks to the specified PCM frame position.
+
+	params:
+	      frame: target frame offset
+	returns:
+	      error
+*/
 func (c *OpusChunkDecoder) SeekToFrame(frame int64) error {
 	if opPcmSeek(c.of, frame) != 0 {
 		return fmt.Errorf("op_pcm_seek failed")
@@ -204,8 +173,15 @@ func (c *OpusChunkDecoder) SampleRate() int    { return DefaultSampleRate }
 func (c *OpusChunkDecoder) TotalFrames() int64 { return c.totalFrames }
 func (c *OpusChunkDecoder) Close() error       { opFree(c.of); return nil }
 
-// cString converts a Go string to a null-terminated byte pointer.
-// The caller must keep a reference to the returned slice to prevent GC.
+/*
+cString converts a Go string to a null-terminated byte pointer for C interop.
+
+	params:
+	      s: Go string
+	returns:
+	      *byte
+	Note: Caller must keep a reference to the returned slice to prevent GC.
+*/
 func cString(s string) *byte {
 	b := append([]byte(s), 0)
 	return (*byte)(unsafe.Pointer(&b[0]))

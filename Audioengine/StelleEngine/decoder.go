@@ -1,27 +1,35 @@
-// AudioEngine/StelleEngine/decoder.go
-// Defines the decoder interface for different audio formats.
+// Audioengine/StelleEngine/decoder.go
+// Defines the shared constants and the ChunkDecoder interfaces used
+// by all codec implementations (opus, vorbis, mp3).
 //
-// Types:
-//   - Decoder: interface for audio format decoders
-//   - AudioSource: decoded PCM audio data with playback state
-//
-// Functions: None (interface-only file)
+// Dependencies:
+//   - None (interface-only file)
 
 package stelleengine
 
-// Default audio parameters for SDL output.
 const (
 	DefaultSampleRate = 48000
 	DefaultChannels   = 2
 )
 
-// Decoder defines the interface for audio format decoders.
-// Each decoder handles a specific audio format (ogg, mp3, flac, etc).
-type Decoder interface {
-	// CanHandle returns true if this decoder supports the given file extension.
-	// The extension includes the dot (e.g., ".ogg", ".mp3").
-	CanHandle(ext string) bool
+/*
+ChunkDecoder is a thin read-cursor over a decoded audio stream.
+Each codec (opus, vorbis, mp3) wraps its native C library into this interface.
+*/
+type ChunkDecoder interface {
+	ReadSamples(buf []float32) (int, error)
+	Channels() int
+	SampleRate() int
+	TotalFrames() int64
+	Close() error
+}
 
-	// Name returns the decoder name for logging/debugging.
-	Name() string
+/*
+SeekableChunkDecoder is the optional extension for decoders with native seek.
+Decoders that don't implement this get automatic re-open+skip seeking for free
+via the streaming goroutine fallback in streaming.go.
+*/
+type SeekableChunkDecoder interface {
+	ChunkDecoder
+	SeekToFrame(frame int64) error
 }

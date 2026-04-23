@@ -1,11 +1,15 @@
-// AudioEngine/StelleEngine/mp3.go
-// MP3 decoder implementation using native libmpg123 via purego.
+// Audioengine/StelleEngine/mp3.go
+// MP3 decoder implementation using libmpg123 via purego.
+// Provides Mp3ChunkDecoder which implements ChunkDecoder and SeekableChunkDecoder.
 //
-// Functions:
-//   - NewMp3Decoder: creates a new MP3 decoder instance.
-//   - Name: returns the decoder name.
-//   - CanHandle: returns true if the file extension is supported by this decoder.
-//   - isMp3File: Helper to check if a file can be decoded by Mp3Decoder based on extension.
+// Dependencies:
+//   - internal/shared: cross-platform dynamic library loading
+//   - purego: register C function symbols without cgo
+//
+// Runtime Libraries:
+//   - Linux:   libmpg123.so.0
+//   - Windows: libmpg123-0.dll
+//   - macOS:   libmpg123.dylib
 
 package stelleengine
 
@@ -36,6 +40,10 @@ var (
 	mpg123_exit      func()
 )
 
+/*
+initMpg123File loads libmpg123 and registers all required C function symbols.
+Called once via sync.Once on first use. Also calls mpg123_init().
+*/
 func initMpg123File() error {
 	mpg123Once.Do(func() {
 		var filename string
@@ -71,21 +79,32 @@ func initMpg123File() error {
 	return mpg123InitErr
 }
 
-// Mp3Decoder implements the Decoder interface for MP3 files.
 type Mp3Decoder struct{}
 
+/*
+NewMp3Decoder creates a new MP3 decoder instance.
+
+	returns:
+	      *Mp3Decoder
+*/
 func NewMp3Decoder() *Mp3Decoder {
 	return &Mp3Decoder{}
 }
 
-func (d *Mp3Decoder) Name() string {
-	return "mp3"
-}
+func (d *Mp3Decoder) Name() string { return "mp3" }
 
 func (d *Mp3Decoder) CanHandle(ext string) bool {
 	return strings.ToLower(ext) == ".mp3"
 }
 
+/*
+isMp3File checks if the file extension is handled by Mp3Decoder.
+
+	params:
+	      path: filesystem path
+	returns:
+	      bool
+*/
 func isMp3File(path string) bool {
 	ext := filepath.Ext(path)
 	decoder := NewMp3Decoder()
@@ -97,10 +116,17 @@ type Mp3ChunkDecoder struct {
 	channels    int
 	sampleRate  int
 	totalFrames int64
-	buf         []byte // internal buffer for 16-bit PCM bytes
+	buf         []byte
 }
 
-// openMp3ChunkDecoder is the openFn for mp3 using libmpg123.
+/*
+openMp3ChunkDecoder returns an openFn factory for MP3 files.
+
+	params:
+	      path: filesystem path to the .mp3 file
+	returns:
+	      openFn
+*/
 func openMp3ChunkDecoder(path string) openFn {
 	return func(seekTo float64) (ChunkDecoder, error) {
 		if err := initMpg123File(); err != nil {
@@ -127,7 +153,6 @@ func openMp3ChunkDecoder(path string) openFn {
 			return nil, fmt.Errorf("mpg123_getformat failed: code %d", res)
 		}
 
-		// Calculate total valid samples across the whole file. 
 		lenRes := mpg123_length(mh)
 		total := int64(-1)
 		if lenRes >= 0 {
@@ -139,7 +164,7 @@ func openMp3ChunkDecoder(path string) openFn {
 			channels:    int(channels),
 			sampleRate:  int(rate),
 			totalFrames: total,
-			buf:         make([]byte, DecodeChunkSize*2*int(channels)), // allocate byte buffer
+			buf:         make([]byte, DecodeChunkSize*2*int(channels)),
 		}
 
 		if seekTo > 0 {
@@ -154,9 +179,17 @@ func openMp3ChunkDecoder(path string) openFn {
 	}
 }
 
+/*
+ReadSamples decodes 16-bit PCM from the MP3 stream, converts to float32,
+and resamples if the file's native rate differs from DefaultSampleRate.
+
+	params:
+	      buf: destination buffer for interleaved float32 samples
+	returns:
+	      int:   number of float32 values written
+	      error: io.EOF on end of stream
+*/
 func (c *Mp3ChunkDecoder) ReadSamples(buf []float32) (int, error) {
-	// buf size represents requested float32 samples.
-	// mpg123 yields natively 16-bit ints, meaning 2 bytes per float sample.
 	bytesNeeded := int64(len(buf) * 2)
 	if int64(len(c.buf)) < bytesNeeded {
 		c.buf = make([]byte, bytesNeeded)
@@ -165,7 +198,6 @@ func (c *Mp3ChunkDecoder) ReadSamples(buf []float32) (int, error) {
 	var done int64
 	res := mpg123_read(c.mh, &c.buf[0], bytesNeeded, &done)
 	if done == 0 && res != 0 {
-		// MPG123_DONE is -12
 		if res == -12 {
 			return 0, io.EOF
 		}
@@ -176,10 +208,8 @@ func (c *Mp3ChunkDecoder) ReadSamples(buf []float32) (int, error) {
 		return 0, io.EOF
 	}
 
-	// Read returns bytes. Convert -> Float32 natively with common util vectoring
 	converted := ConvertInt16BytesToFloat32(c.buf[:done])
 
-	// Resample if the native sample rate requires interpolation to match SDL audio specs
 	if c.sampleRate != DefaultSampleRate {
 		converted = Resample(converted, c.sampleRate, DefaultSampleRate, c.channels)
 	}
@@ -188,9 +218,16 @@ func (c *Mp3ChunkDecoder) ReadSamples(buf []float32) (int, error) {
 	return len(converted), nil
 }
 
+/*
+SeekToFrame seeks to the specified PCM frame position using mpg123_seek.
+
+	params:
+	      frame: target frame offset
+	returns:
+	      error
+*/
 func (c *Mp3ChunkDecoder) SeekToFrame(frame int64) error {
-	// Let mpg123 seek accurately across all frames via internal jump calculations.
-	res := mpg123_seek(c.mh, frame, 0) // SEEK_SET
+	res := mpg123_seek(c.mh, frame, 0)
 	if res < 0 {
 		return fmt.Errorf("mpg123_seek failed returning %d", res)
 	}
