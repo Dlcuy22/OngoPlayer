@@ -82,67 +82,67 @@ func (d *OpusDecoder) CanHandle(ext string) bool {
 	return lower == ".opus" || lower == ".ogg"
 }
 
-func (d *OpusDecoder) Decode(path string) (*AudioSource, error) {
-	if err := initOpusFile(); err != nil {
-		return nil, err
-	}
+// func (d *OpusDecoder) Decode(path string) (*AudioSource, error) {
+// 	if err := initOpusFile(); err != nil {
+// 		return nil, err
+// 	}
 
-	// op_open_file expects a null-terminated C string
-	cPath := append([]byte(path), 0)
-	var opErr int32
+// 	// op_open_file expects a null-terminated C string
+// 	cPath := append([]byte(path), 0)
+// 	var opErr int32
 
-	of := opOpenFile(&cPath[0], &opErr)
-	if of == 0 {
-		return nil, fmt.Errorf("op_open_file failed with error code %d", opErr)
-	}
-	defer opFree(of)
+// 	of := opOpenFile(&cPath[0], &opErr)
+// 	if of == 0 {
+// 		return nil, fmt.Errorf("op_open_file failed with error code %d", opErr)
+// 	}
+// 	defer opFree(of)
 
-	// Get total PCM samples for pre-allocation (-1 = entire stream)
-	totalSamples := opPcmTotal(of, -1)
+// 	// Get total PCM samples for pre-allocation (-1 = entire stream)
+// 	totalSamples := opPcmTotal(of, -1)
 
-	// op_read_float_stereo always outputs stereo (2 channels)
-	channels := 2
-	var allSamples []float32
+// 	// op_read_float_stereo always outputs stereo (2 channels)
+// 	channels := 2
+// 	var allSamples []float32
 
-	if totalSamples > 0 {
-		// Pre-allocate: totalSamples is per-channel
-		allSamples = make([]float32, 0, int(totalSamples)*channels)
-	}
+// 	if totalSamples > 0 {
+// 		// Pre-allocate: totalSamples is per-channel
+// 		allSamples = make([]float32, 0, int(totalSamples)*channels)
+// 	}
 
-	// Read in chunks op_read_float_stereo returns samples per channel per call
-	// Buffer: 120ms at 48kHz stereo = 5760 * 2 = 11520 floats
-	buf := make([]float32, 11520)
+// 	// Read in chunks op_read_float_stereo returns samples per channel per call
+// 	// Buffer: 120ms at 48kHz stereo = 5760 * 2 = 11520 floats
+// 	buf := make([]float32, 11520)
 
-	for {
-		// n = number of samples per channel read, 0 = EOF, <0 = error
-		n := opReadFloatStereo(of, &buf[0], int32(len(buf)))
-		if n == 0 {
-			break
-		}
-		if n < 0 {
-			// OP_HOLE (-3) means a gap in the data, skip it
-			if n == -3 {
-				continue
-			}
-			return nil, fmt.Errorf("op_read_float_stereo error: %d", n)
-		}
+// 	for {
+// 		// n = number of samples per channel read, 0 = EOF, <0 = error
+// 		n := opReadFloatStereo(of, &buf[0], int32(len(buf)))
+// 		if n == 0 {
+// 			break
+// 		}
+// 		if n < 0 {
+// 			// OP_HOLE (-3) means a gap in the data, skip it
+// 			if n == -3 {
+// 				continue
+// 			}
+// 			return nil, fmt.Errorf("op_read_float_stereo error: %d", n)
+// 		}
 
-		// n samples per channel * 2 channels = total float32s
-		totalFloats := int(n) * channels
-		allSamples = append(allSamples, buf[:totalFloats]...)
-	}
+// 		// n samples per channel * 2 channels = total float32s
+// 		totalFloats := int(n) * channels
+// 		allSamples = append(allSamples, buf[:totalFloats]...)
+// 	}
 
-	if len(allSamples) == 0 {
-		return nil, fmt.Errorf("no audio data decoded from opus file")
-	}
+// 	if len(allSamples) == 0 {
+// 		return nil, fmt.Errorf("no audio data decoded from opus file")
+// 	}
 
-	return &AudioSource{
-		samples:    allSamples,
-		posFrame:   0,
-		channels:   DefaultChannels,
-		sampleRate: DefaultSampleRate,
-	}, nil
-}
+// 	return &AudioSource{
+// 		samples:    allSamples,
+// 		posFrame:   0,
+// 		channels:   DefaultChannels,
+// 		sampleRate: DefaultSampleRate,
+// 	}, nil
+// }
 
 type OpusChunkDecoder struct {
 	of          uintptr

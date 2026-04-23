@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	stelleengine "github.com/dlcuy22/OngoPlayer/Audioengine/StelleEngine"
@@ -24,23 +23,6 @@ var supportedExts = map[string]bool{
 	".oga":  true,
 }
 
-func scanFolder(dir string) ([]string, error) {
-	var queue []string
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read folder: %w", err)
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		if supportedExts[strings.ToLower(filepath.Ext(e.Name()))] {
-			queue = append(queue, filepath.Join(dir, e.Name()))
-		}
-	}
-	return queue, nil
-}
-
 func main() {
 	art := `
 ▄▖      ▄▖▜         
@@ -54,7 +36,7 @@ func main() {
 	fmt.Print("Enter folder to play: ")
 	fmt.Scan(&folder)
 
-	queue, err := scanFolder(folder)
+	queue, err := utils.ScanFolder(folder, supportedExts)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)

@@ -2,6 +2,8 @@ package utils
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -35,4 +37,21 @@ func RenderBar(pos, dur float64, barWidth int) string {
 	}
 
 	return fmt.Sprintf("\r[%s] %s / %s   ", bar, FormatTime(pos), FormatTime(dur))
+}
+
+func ScanFolder(dir string, supportedExts map[string]bool) ([]string, error) {
+	var queue []string
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read folder: %w", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if supportedExts[strings.ToLower(filepath.Ext(e.Name()))] {
+			queue = append(queue, filepath.Join(dir, e.Name()))
+		}
+	}
+	return queue, nil
 }

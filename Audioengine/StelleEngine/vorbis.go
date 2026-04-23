@@ -13,7 +13,6 @@
 package stelleengine
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -41,44 +40,44 @@ func (d *VorbisDecoder) CanHandle(ext string) bool {
 	return lower == ".ogg" || lower == ".oga"
 }
 
-// Decode loads and decodes an OGG Vorbis file into PCM samples.
-func (d *VorbisDecoder) Decode(path string) (*AudioSource, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open file: %w", err)
-	}
-	defer f.Close()
+// // Decode loads and decodes an OGG Vorbis file into PCM samples.
+// func (d *VorbisDecoder) Decode(path string) (*AudioSource, error) {
+// 	f, err := os.Open(path)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("open file: %w", err)
+// 	}
+// 	defer f.Close()
 
-	data, format, err := oggvorbis.ReadAll(f)
-	if err != nil {
-		return nil, fmt.Errorf("decode ogg: %w", err)
-	}
+// 	data, format, err := oggvorbis.ReadAll(f)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("decode ogg: %w", err)
+// 	}
 
-	if format.SampleRate != DefaultSampleRate {
-		return nil, fmt.Errorf("sample rate mismatch: file=%d expected=%d (resample required)", format.SampleRate, DefaultSampleRate)
-	}
+// 	if format.SampleRate != DefaultSampleRate {
+// 		return nil, fmt.Errorf("sample rate mismatch: file=%d expected=%d (resample required)", format.SampleRate, DefaultSampleRate)
+// 	}
 
-	// Use our new utility for channel conversion
-	samples := ConvertChannels(data, format.Channels, DefaultChannels)
+// 	// Use our new utility for channel conversion
+// 	samples := ConvertChannels(data, format.Channels, DefaultChannels)
 
-	return &AudioSource{
-		samples:    samples,
-		posFrame:   0,
-		channels:   DefaultChannels,
-		sampleRate: format.SampleRate,
-	}, nil
-}
+// 	return &AudioSource{
+// 		samples:    samples,
+// 		posFrame:   0,
+// 		channels:   DefaultChannels,
+// 		sampleRate: format.SampleRate,
+// 	}, nil
+// }
 
-// SupportedExtensions returns the list of file extensions this decoder supports.
-func (d *VorbisDecoder) SupportedExtensions() []string {
-	return []string{".ogg", ".oga"}
-}
+// // SupportedExtensions returns the list of file extensions this decoder supports.
+// func (d *VorbisDecoder) SupportedExtensions() []string {
+// 	return []string{".ogg", ".oga"}
+// }
 
-// decodeVorbisFile is kept for backward compatibility but delegates to the new interface.
-func decodeVorbisFile(path string) (*AudioSource, error) {
-	decoder := NewVorbisDecoder()
-	return decoder.Decode(path)
-}
+// // decodeVorbisFile is kept for backward compatibility but delegates to the new interface.
+// func decodeVorbisFile(path string) (*AudioSource, error) {
+// 	decoder := NewVorbisDecoder()
+// 	return decoder.Decode(path)
+// }
 
 // Helper to check if a file can be decoded by VorbisDecoder based on extension.
 func isVorbisFile(path string) bool {
