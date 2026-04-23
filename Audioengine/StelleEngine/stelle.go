@@ -53,17 +53,17 @@ func NewStelleEngine(volume float32) *StelleEngine {
 	}
 }
 
-// openFnForFile picks the right openFn based on file extension.
-// To add a new codec: add a case here and implement ChunkDecoder for it.
-func openFnForFile(filePath string) (openFn, error) {
+// openFnForFile picks the possible openFns based on file extension.
+func openFnForFile(filePath string) ([]openFn, error) {
 	ext := strings.ToLower(filepath.Ext(filePath))
 	switch ext {
 	case ".opus":
-		return openOpusChunkDecoder(filePath), nil
+		return []openFn{openOpusChunkDecoder(filePath)}, nil
 	case ".mp3":
-		return openMp3ChunkDecoder(filePath), nil
+		return []openFn{openMp3ChunkDecoder(filePath)}, nil
 	case ".ogg", ".oga":
-		return openVorbisChunkDecoder(filePath), nil
+		// .ogg can be Opus or Vorbis. Try Opus first, fallback to Vorbis.
+		return []openFn{openOpusChunkDecoder(filePath), openVorbisChunkDecoder(filePath)}, nil
 	default:
 		return nil, fmt.Errorf("no streaming decoder for extension: %s", ext)
 	}
@@ -151,15 +151,23 @@ func (e *StelleEngine) Play(filePath string, seekTo float64, volume int) error {
 	e.stopInternal()
 	e.mu.Unlock()
 
-	// Resolve the openFn for this file type
-	open, err := openFnForFile(filePath)
+	// Resolve the possible openFns for this file type
+	openFns, err := openFnForFile(filePath)
 	if err != nil {
 		return err
 	}
 
-	streamSrc, err := NewStreamingSource(open, seekTo)
-	if err != nil {
-		return fmt.Errorf("streaming source: %w", err)
+	var streamSrc *StreamingAudioSource
+	var errs []string
+	for _, open := range openFns {
+		streamSrc, err = NewStreamingSource(open, seekTo)
+		if err == nil {
+			break
+		}
+		errs = append(errs, err.Error())
+	}
+	if streamSrc == nil {
+		return fmt.Errorf("all decoders failed: %s", strings.Join(errs, " | "))
 	}
 	streamSrc.SetVolume(float32(volume) / 100.0)
 
@@ -312,6 +320,7 @@ func (e *StelleEngine) GetPosition() float64 {
 	if e.streamSrc == nil {
 		return 0
 	}
+	// fmt.Println("Position:", e.streamSrc.Position)
 	return e.streamSrc.Position()
 }
 

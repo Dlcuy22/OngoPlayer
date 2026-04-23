@@ -39,15 +39,16 @@ type SeekableChunkDecoder interface {
 }
 
 type RingBuffer struct {
-	buf      []float32
-	cap      int
-	head     int
-	tail     int
-	count    int
-	closed   bool
-	mu       sync.Mutex
-	notEmpty *sync.Cond
-	notFull  *sync.Cond
+	buf       []float32
+	cap       int
+	head      int
+	tail      int
+	count     int
+	closed    bool
+	interrupt bool
+	mu        sync.Mutex
+	notEmpty  *sync.Cond
+	notFull   *sync.Cond
 }
 
 func NewRingBuffer(frames, channels int) *RingBuffer {
@@ -62,10 +63,10 @@ func (rb *RingBuffer) Write(samples []float32) bool {
 	rb.mu.Lock()
 	defer rb.mu.Unlock()
 	for _, s := range samples {
-		for rb.count == rb.cap && !rb.closed {
+		for rb.count == rb.cap && !rb.closed && !rb.interrupt {
 			rb.notFull.Wait()
 		}
-		if rb.closed {
+		if rb.closed || rb.interrupt {
 			return false
 		}
 		rb.buf[rb.tail] = s
@@ -116,7 +117,21 @@ func (rb *RingBuffer) Reopen() {
 	defer rb.mu.Unlock()
 	rb.head, rb.tail, rb.count = 0, 0, 0
 	rb.closed = false
+	rb.interrupt = false
 	rb.notFull.Broadcast()
+}
+
+func (rb *RingBuffer) Interrupt() {
+	rb.mu.Lock()
+	rb.interrupt = true
+	rb.notFull.Broadcast()
+	rb.mu.Unlock()
+}
+
+func (rb *RingBuffer) ResetInterrupt() {
+	rb.mu.Lock()
+	rb.interrupt = false
+	rb.mu.Unlock()
 }
 
 type seekRequest struct {
@@ -170,7 +185,8 @@ func (s *StreamingAudioSource) SetVolume(v float32) {
 
 // Seek sends a seek request to the decoder goroutine.
 func (s *StreamingAudioSource) Seek(positionSecs float64) {
-	// Drain old request if not yet consumed, then send new one.
+	s.ring.Interrupt()
+
 	select {
 	case <-s.seekCh:
 	default:
@@ -232,6 +248,7 @@ func NewStreamingSource(open openFn, seekTo float64) (*StreamingAudioSource, err
 				src.posFrame.Store(targetFrame)
 				src.done.Store(false)
 				src.ring.Clear()
+				src.ring.ResetInterrupt()
 				continue
 
 			default:
@@ -240,7 +257,10 @@ func NewStreamingSource(open openFn, seekTo float64) (*StreamingAudioSource, err
 			n, err := cd.ReadSamples(buf)
 			if n > 0 {
 				if ok := src.ring.Write(buf[:n]); !ok {
-					return
+					// Write was interrupted (seek) or closed (stop).
+					// If closed, the next loop iteration will exit via stopCh.
+					// If interrupted, it will pick up the seekCh request.
+					continue
 				}
 			}
 			if err == io.EOF || (err == nil && n == 0) {
