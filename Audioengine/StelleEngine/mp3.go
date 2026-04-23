@@ -62,23 +62,20 @@ func (d *MP3Decoder) CanHandle(ext string) bool {
 // 	// Convert channels to the engine's default via util
 // 	finalSamples := ConvertChannels(floatSamples, channels, DefaultChannels)
 
-// 	return &AudioSource{
-// 		samples:    finalSamples,
-// 		posFrame:   0,
-// 		channels:   DefaultChannels,
-// 		sampleRate: sampleRate,
-// 	}, nil
-// }
-
+//		return &AudioSource{
+//			samples:    finalSamples,
+//			posFrame:   0,
+//			channels:   DefaultChannels,
+//			sampleRate: sampleRate,
+//		}, nil
+//	}
 type Mp3ChunkDecoder struct {
 	f           *os.File
 	dec         *mp3.Decoder
-	buf         []byte
+	rawBuf      []byte
 	totalFrames int64
 }
 
-// openMp3ChunkDecoder is the openFn for mp3.
-// seekTo is handled by re-opening + decoding-to-position in NewStreamingSource.
 func openMp3ChunkDecoder(path string) openFn {
 	return func(seekTo float64) (ChunkDecoder, error) {
 		f, err := os.Open(path)
@@ -91,26 +88,22 @@ func openMp3ChunkDecoder(path string) openFn {
 			return nil, err
 		}
 
+		// dec.Length() = total decoded bytes (16-bit stereo = 4 bytes per frame)
+		// Scale to DefaultSampleRate if the file needs resampling
+		rawFrames := dec.Length() / 4
+		totalFrames := rawFrames * int64(DefaultSampleRate) / int64(dec.SampleRate())
+
 		cd := &Mp3ChunkDecoder{
-			f:   f,
-			dec: dec,
-			buf: make([]byte, DecodeChunkSize*2), // 2 bytes per int16
+			f:           f,
+			dec:         dec,
+			rawBuf:      make([]byte, DecodeChunkSize*2),
+			totalFrames: totalFrames,
 		}
 
 		if seekTo > 0 {
-			skipSamples := int64(seekTo*float64(dec.SampleRate())) * 2 // stereo
-			skipBytes := skipSamples * 2                               // int16
-			discardBuf := make([]byte, 8192)
-			for skipBytes > 0 {
-				toRead := int64(len(discardBuf))
-				if skipBytes < toRead {
-					toRead = skipBytes
-				}
-				n, err := dec.Read(discardBuf[:toRead])
-				skipBytes -= int64(n)
-				if err != nil {
-					break
-				}
+			if err := cd.SeekToFrame(int64(seekTo * float64(DefaultSampleRate))); err != nil {
+				f.Close()
+				return nil, err
 			}
 		}
 
@@ -119,27 +112,42 @@ func openMp3ChunkDecoder(path string) openFn {
 }
 
 func (c *Mp3ChunkDecoder) ReadSamples(buf []float32) (int, error) {
-	bytesNeeded := len(buf) * 2 // 1 float32 per int16
-	if len(c.buf) < bytesNeeded {
-		c.buf = make([]byte, bytesNeeded)
+	// Read enough raw bytes to fill buf after conversion (and possible upsampling)
+	// Worst case upsampling ratio: DefaultSampleRate / min(SampleRate) — 48000/44100 ≈ 1.09
+	// Reading exactly len(buf)*2 bytes is safe: after upsample the result fits in buf.
+	bytesNeeded := len(buf) * 2
+	if len(c.rawBuf) < bytesNeeded {
+		c.rawBuf = make([]byte, bytesNeeded)
 	}
 
-	n, err := c.dec.Read(c.buf[:bytesNeeded])
-	if n == 0 && err != nil {
+	n, err := c.dec.Read(c.rawBuf[:bytesNeeded])
+	if n == 0 {
 		if err == io.EOF {
 			return 0, io.EOF
 		}
 		return 0, err
 	}
 
-	converted := ConvertInt16BytesToFloat32(c.buf[:n])
-	// Resample if needed
+	converted := ConvertInt16BytesToFloat32(c.rawBuf[:n])
+
 	sr := c.dec.SampleRate()
 	if sr != DefaultSampleRate {
 		converted = Resample(converted, sr, DefaultSampleRate, 2)
 	}
-	copy(buf, converted)
-	return len(converted), nil
+
+	// converted may now be larger or smaller than buf — copy only what fits
+	copied := copy(buf, converted)
+	return copied, nil
+}
+
+// SeekToFrame uses go-mp3's native io.Seeker to jump directly to the target frame.
+func (c *Mp3ChunkDecoder) SeekToFrame(frame int64) error {
+	// Convert from output frames (DefaultSampleRate) back to source frames
+	srcFrame := frame * int64(c.dec.SampleRate()) / int64(DefaultSampleRate)
+	// go-mp3 Seek operates on bytes: 4 bytes per frame (16-bit stereo)
+	byteOffset := srcFrame * 4
+	_, err := c.dec.Seek(byteOffset, io.SeekStart)
+	return err
 }
 
 func (c *Mp3ChunkDecoder) Channels() int      { return DefaultChannels }
