@@ -10,6 +10,7 @@ require (
 )
 
 require (
+	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8 // indirect
 	github.com/jfreymuth/vorbis v1.0.2 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/term v0.42.0 // indirect

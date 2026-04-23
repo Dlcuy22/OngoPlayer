@@ -9,8 +9,6 @@ OngoPlayer uses [purego](https://github.com/ebitengine/purego) to call native au
 Because almost all audio codec implementations that are actually efficient and fast are written in C,
 and I don't want to reimplement all of them in Go, nor can I guarantee the same speed and performance as the official C implementations.
 
-> Some decoders like Vorbis and MP3 use native Go codecs.
-
 ### Roadmap
 
 - [ ] Add more audio format support
