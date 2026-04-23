@@ -13,12 +13,12 @@ package stelleengine
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
 
 	AudioEngine "github.com/dlcuy22/OngoPlayer/Audioengine"
-
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
 
@@ -28,121 +28,88 @@ type StelleEngine struct {
 	state      AudioEngine.PlaybackState
 	stream     *sdl.AudioStream
 	volume     float32
-	src        *AudioSource
+	streamSrc  *StreamingAudioSource
 	onComplete func()
-	decoders   []Decoder
 	stopCh     chan struct{}
 }
 
-// NewStelleEngine creates a new Stelle-based audio engine.
-func NewStelleEngine() *StelleEngine {
+/*
+NewStelleEngine creates a new Stelle engine instance.
+
+	params:
+	      volume: default volume of the audio engine (0.0 - 1.0)
+	returns:
+		  *stelleengine.StelleEngine
+*/
+func NewStelleEngine(volume float32) *StelleEngine {
 	if !sdl.Init(sdl.InitAudio) {
 		panic(sdl.GetError())
 	}
 
 	return &StelleEngine{
-		state:    AudioEngine.StateStopped,
-		volume:   0.3,
-		decoders: []Decoder{NewVorbisDecoder(), NewMp3Decoder(), NewOpusDecoder()},
-		stopCh:   make(chan struct{}),
+		state:  AudioEngine.StateStopped,
+		volume: volume,
+		stopCh: make(chan struct{}),
 	}
 }
 
-// findDecoders returns all decoders that can handle the given file extension.
-// Multiple decoders may match (e.g., both Vorbis and Opus handle .ogg).
-func (e *StelleEngine) findDecoders(filePath string) []Decoder {
-	ext := filepath.Ext(filePath)
-	var matches []Decoder
-	for _, d := range e.decoders {
-		if d.CanHandle(ext) {
-			matches = append(matches, d)
-		}
+// openFnForFile picks the right openFn based on file extension.
+// To add a new codec: add a case here and implement ChunkDecoder for it.
+func openFnForFile(filePath string) (openFn, error) {
+	ext := strings.ToLower(filepath.Ext(filePath))
+	switch ext {
+	case ".opus":
+		return openOpusChunkDecoder(filePath), nil
+	case ".mp3":
+		return openMp3ChunkDecoder(filePath), nil
+	case ".ogg", ".oga":
+		return openVorbisChunkDecoder(filePath), nil
+	default:
+		return nil, fmt.Errorf("no streaming decoder for extension: %s", ext)
 	}
-	return matches
 }
 
-// audioCallback is the SDL audio callback that feeds samples to the audio device.
-//
-//export audioCallback
+// audioCallback is the SDL audio callback that feeds samples from the ring buffer to the audio device
 func audioCallback(userdata unsafe.Pointer, stream *sdl.AudioStream, additionalAmount, _ int32) {
 	if additionalAmount <= 0 {
 		return
 	}
 
-	src := (*AudioSource)(userdata)
+	src := (*StreamingAudioSource)(userdata)
 	if src == nil {
-		// Output silence if no source
-		nFrames := int(additionalAmount) / (4 * DefaultChannels)
-		silence := make([]float32, nFrames*DefaultChannels)
-		if len(silence) > 0 {
-			ptr := (*uint8)(unsafe.Pointer(&silence[0]))
-			sdl.PutAudioStreamData(stream, ptr, int32(len(silence)*4))
-		}
+		nSamples := int(additionalAmount) / 4
+		silence := make([]float32, nSamples)
+		ptr := (*uint8)(unsafe.Pointer(&silence[0]))
+		sdl.PutAudioStreamData(stream, ptr, additionalAmount)
 		return
 	}
 
-	nFrames := int(additionalAmount) / (4 * DefaultChannels)
-	if nFrames <= 0 {
-		return
-	}
+	nSamples := int(additionalAmount) / 4
+	outBuf := make([]float32, nSamples)
 
-	outBuf := make([]float32, nFrames*DefaultChannels)
+	n := src.ring.Read(outBuf)
 
-	src.mu.Lock()
-	pos := src.posFrame
-	totalFrames := int64(len(src.samples) / src.channels)
-	framesLeft := totalFrames - pos
-	vol := src.volume // Get volume from source
-	src.mu.Unlock()
+	// Track playback position: samples read / channels = frames consumed
+	if n > 0 {
+		src.AdvanceFrames(int64(n / src.channels))
 
-	if framesLeft <= 0 {
-		src.done.Store(true)
-		return
-	}
-
-	framesToCopy := nFrames
-	if int64(framesToCopy) > framesLeft {
-		framesToCopy = int(framesLeft)
-	}
-
-	// Copy samples with volume adjustment
-	switch {
-	case src.channels == DefaultChannels:
-		start := pos * int64(src.channels)
-		end := start + int64(framesToCopy*DefaultChannels)
-		for i, s := range src.samples[start:end] {
-			outBuf[i] = s * vol
-		}
-
-	case src.channels == 1 && DefaultChannels == 2:
-		// Mono to stereo
-		start := pos
-		for i := 0; i < framesToCopy; i++ {
-			s := src.samples[start+int64(i)] * vol
-			outBuf[2*i] = s
-			outBuf[2*i+1] = s
-		}
-
-	case src.channels == 2 && DefaultChannels == 1:
-		// Stereo to mono
-		start := pos * 2
-		for i := 0; i < framesToCopy; i++ {
-			l := src.samples[start+int64(2*i)]
-			r := src.samples[start+int64(2*i+1)]
-			outBuf[i] = (l + r) * 0.5 * vol
+		vol := src.Volume()
+		for i := range outBuf[:n] {
+			outBuf[i] *= vol
 		}
 	}
 
-	src.mu.Lock()
-	src.posFrame += int64(framesToCopy)
-	src.mu.Unlock()
+	// Zero-fill the tail if the ring was starved (buffering gap or near EOF)
+	for i := n; i < nSamples; i++ {
+		outBuf[i] = 0
+	}
 
 	ptr := (*uint8)(unsafe.Pointer(&outBuf[0]))
-	byteLen := int32(len(outBuf) * 4)
-	sdl.PutAudioStreamData(stream, ptr, byteLen)
+	sdl.PutAudioStreamData(stream, ptr, int32(nSamples*4))
 }
 
-// monitorCompletion runs in a goroutine to detect playback completion.
+// monitorCompletion runs in a goroutine to detect when the decoder goroutine
+// has finished AND SDL has drained its internal queue
 func (e *StelleEngine) monitorCompletion() {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
@@ -152,11 +119,13 @@ func (e *StelleEngine) monitorCompletion() {
 		case <-e.stopCh:
 			return
 		case <-ticker.C:
-			if e.src == nil {
+			if e.streamSrc == nil {
 				continue
 			}
-			if e.src.done.Load() {
-				// Wait for SDL to drain queued audio
+			// Two conditions must both be true before firing onComplete:
+			// 1. Decoder goroutine hit EOF and set done
+			// 2. Ring buffer is fully drained (SDL has consumed everything)
+			if e.streamSrc.done.Load() && e.streamSrc.ring.Available() == 0 {
 				queued := sdl.GetAudioStreamQueued(e.stream)
 				if queued <= 0 {
 					e.mu.Lock()
@@ -175,83 +144,76 @@ func (e *StelleEngine) monitorCompletion() {
 }
 
 // Play starts playing the audio file from the given position.
+// seekTo is in seconds, volume is 0–100.
 func (e *StelleEngine) Play(filePath string, seekTo float64, volume int) error {
-	// Stop any current playback first (needs lock)
+	// Stop any current playback before starting new one
 	e.mu.Lock()
 	e.stopInternal()
 	e.mu.Unlock()
 
-	// Find all decoders that can handle this file
-	decoders := e.findDecoders(filePath)
-	if len(decoders) == 0 {
-		return fmt.Errorf("no decoder found for file: %s", filePath)
+	// Resolve the openFn for this file type
+	open, err := openFnForFile(filePath)
+	if err != nil {
+		return err
 	}
 
-	// Try each matching decoder in order (fallback for shared extensions like .ogg)
-	var src *AudioSource
-	var lastErr error
-	for _, decoder := range decoders {
-		src, lastErr = decoder.Decode(filePath)
-		if lastErr == nil {
-			break
-		}
+	streamSrc, err := NewStreamingSource(open, seekTo)
+	if err != nil {
+		return fmt.Errorf("streaming source: %w", err)
 	}
-	if src == nil {
-		return fmt.Errorf("decode failed: %w", lastErr)
-	}
+	streamSrc.SetVolume(float32(volume) / 100.0)
 
-	// Now lock only for the quick SDL setup
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	// Set volume (convert 0-100 to 0.0-1.0)
 	e.volume = float32(volume) / 100.0
-	src.volume = e.volume
+	e.streamSrc = streamSrc
 
-	// Set initial position from seekTo
-	src.SetPosition(seekTo)
-
-	e.src = src
-
-	// Create SDL audio stream with callback
 	cb := sdl.NewAudioStreamCallback(audioCallback)
 	spec := sdl.AudioSpec{Format: sdl.AudioF32, Freq: DefaultSampleRate, Channels: DefaultChannels}
-	stream := sdl.OpenAudioDeviceStream(sdl.AudioDeviceDefaultPlayback, &spec, cb, unsafe.Pointer(src))
+	stream := sdl.OpenAudioDeviceStream(sdl.AudioDeviceDefaultPlayback, &spec, cb, unsafe.Pointer(streamSrc))
 	if stream == nil {
 		return fmt.Errorf("failed to open audio device stream: %s", sdl.GetError())
 	}
 	e.stream = stream
 
-	// Start playback
 	if !sdl.ResumeAudioStreamDevice(e.stream) {
 		return fmt.Errorf("failed to resume audio stream device: %s", sdl.GetError())
 	}
 
 	e.state = AudioEngine.StatePlaying
 
-	// Start completion monitor
 	e.stopCh = make(chan struct{})
 	go e.monitorCompletion()
 
 	return nil
 }
 
-// Stop stops playback and resets state.
-func (e *StelleEngine) Stop() {
+// Stop stops playback and resets state
+func (e *StelleEngine) Stop() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.stopInternal()
 	e.state = AudioEngine.StateStopped
+	return nil
 }
 
-// stopInternal stops playback without locking (called internally).
 func (e *StelleEngine) stopInternal() {
-	// Signal completion monitor to stop
 	select {
 	case <-e.stopCh:
-		// Already closed
+
 	default:
 		close(e.stopCh)
+	}
+
+	// Shut down the decoder goroutine via the ring's stopCh
+	if e.streamSrc != nil {
+		select {
+		case <-e.streamSrc.stopCh:
+		default:
+			close(e.streamSrc.stopCh)
+		}
+		e.streamSrc = nil
 	}
 
 	if e.stream != nil {
@@ -259,11 +221,10 @@ func (e *StelleEngine) stopInternal() {
 		sdl.DestroyAudioStream(e.stream)
 		e.stream = nil
 	}
-	e.src = nil
 }
 
-// Pause pauses playback, preserving current position.
-func (e *StelleEngine) Pause() {
+// Pause pauses playback, preserving the current ring buffer state.
+func (e *StelleEngine) Pause() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -271,32 +232,34 @@ func (e *StelleEngine) Pause() {
 		sdl.PauseAudioStreamDevice(e.stream)
 		e.state = AudioEngine.StatePaused
 	}
+	return nil
 }
 
-// Resume resumes playback from the given position.
+// Resume resumes a paused stream. seekTo repositions if non-zero.
 func (e *StelleEngine) Resume(seekTo float64, volume int) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	if e.src == nil {
+	if e.streamSrc == nil {
 		return nil
 	}
 
-	// Update position if needed
-	e.src.SetPosition(seekTo)
-
-	// Update volume
 	e.volume = float32(volume) / 100.0
-	e.src.volume = e.volume
+	e.streamSrc.SetVolume(e.volume)
 
-	// Resume SDL stream
+	if seekTo > 0 {
+		e.streamSrc.Seek(seekTo)
+		if e.stream != nil {
+			sdl.ClearAudioStream(e.stream)
+		}
+	}
+
 	if e.stream != nil && e.state == AudioEngine.StatePaused {
 		if !sdl.ResumeAudioStreamDevice(e.stream) {
 			return fmt.Errorf("failed to resume audio stream: %s", sdl.GetError())
 		}
 		e.state = AudioEngine.StatePlaying
 
-		// Restart completion monitor
 		e.stopCh = make(chan struct{})
 		go e.monitorCompletion()
 	}
@@ -304,27 +267,24 @@ func (e *StelleEngine) Resume(seekTo float64, volume int) error {
 	return nil
 }
 
-// Seek jumps to the specified position while maintaining playback.
+// Seek jumps to the specified position while maintaining current playback state.
 func (e *StelleEngine) Seek(position float64, volume int) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	if e.src == nil {
+	if e.streamSrc == nil {
 		return nil
 	}
 
-	// Update position
-	e.src.SetPosition(position)
-
-	// Update volume
 	e.volume = float32(volume) / 100.0
-	e.src.volume = e.volume
+	e.streamSrc.SetVolume(e.volume)
 
-	// For accurate seeking, clear queued audio and restart stream
-	if e.stream != nil && e.state == AudioEngine.StatePlaying {
-		sdl.PauseAudioStreamDevice(e.stream)
+	// Send seek to the decoder goroutine (non-blocking, latest wins)
+	e.streamSrc.Seek(position)
+
+	// Clear SDL's internal buffer so stale pre-seek audio isn't heard
+	if e.stream != nil {
 		sdl.ClearAudioStream(e.stream)
-		sdl.ResumeAudioStreamDevice(e.stream)
 	}
 
 	return nil
@@ -337,9 +297,31 @@ func (e *StelleEngine) GetState() AudioEngine.PlaybackState {
 	return e.state
 }
 
-// SetOnComplete sets the callback for when playback finishes.
+// SetOnComplete sets the callback invoked when playback finishes naturally.
 func (e *StelleEngine) SetOnComplete(callback func()) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.onComplete = callback
+}
+
+// GetPosition returns the current playback position in seconds.
+func (e *StelleEngine) GetPosition() float64 {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if e.streamSrc == nil {
+		return 0
+	}
+	return e.streamSrc.Position()
+}
+
+// GetDuration returns the total duration of the current track in seconds.
+func (e *StelleEngine) GetDuration() float64 {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if e.streamSrc == nil {
+		return 0
+	}
+	return e.streamSrc.Duration()
 }

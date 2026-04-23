@@ -43,4 +43,10 @@ type Engine interface {
 
 	// SetOnComplete sets a callback to be invoked when playback finishes.
 	SetOnComplete(callback func())
+
+	// GetPosition returns the current playback position in seconds.
+	GetPosition() float64
+
+	// GetDuration returns the total duration of the current audio in seconds.
+	GetDuration() float64
 }

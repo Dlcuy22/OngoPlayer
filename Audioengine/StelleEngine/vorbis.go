@@ -14,6 +14,7 @@ package stelleengine
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,3 +86,53 @@ func isVorbisFile(path string) bool {
 	decoder := NewVorbisDecoder()
 	return decoder.CanHandle(ext)
 }
+
+type VorbisChunkDecoder struct {
+	f          *os.File
+	reader     *oggvorbis.Reader
+	channels   int
+	sampleRate int
+}
+
+func openVorbisChunkDecoder(path string) openFn {
+	return func(seekTo float64) (ChunkDecoder, error) {
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		r, err := oggvorbis.NewReader(f)
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
+
+		cd := &VorbisChunkDecoder{
+			f:          f,
+			reader:     r,
+			channels:   r.Channels(),
+			sampleRate: r.SampleRate(),
+		}
+
+		if seekTo > 0 {
+			targetSample := int64(seekTo * float64(r.SampleRate()))
+			if err := r.SetPosition(targetSample); err != nil {
+				_ = err
+			}
+		}
+
+		return cd, nil
+	}
+}
+
+func (c *VorbisChunkDecoder) ReadSamples(buf []float32) (int, error) {
+	n, err := c.reader.Read(buf)
+	if err == io.EOF {
+		return n, io.EOF
+	}
+	return n, err
+}
+
+func (c *VorbisChunkDecoder) Channels() int      { return c.channels }
+func (c *VorbisChunkDecoder) SampleRate() int    { return c.sampleRate }
+func (c *VorbisChunkDecoder) TotalFrames() int64 { return -1 }
+func (c *VorbisChunkDecoder) Close() error       { return c.f.Close() }

@@ -70,3 +70,80 @@ func (d *MP3Decoder) Decode(path string) (*AudioSource, error) {
 		sampleRate: sampleRate,
 	}, nil
 }
+
+type Mp3ChunkDecoder struct {
+	f           *os.File
+	dec         *mp3.Decoder
+	buf         []byte
+	totalFrames int64
+}
+
+// openMp3ChunkDecoder is the openFn for mp3.
+// seekTo is handled by re-opening + decoding-to-position in NewStreamingSource.
+func openMp3ChunkDecoder(path string) openFn {
+	return func(seekTo float64) (ChunkDecoder, error) {
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		dec, err := mp3.NewDecoder(f)
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
+
+		cd := &Mp3ChunkDecoder{
+			f:   f,
+			dec: dec,
+			buf: make([]byte, DecodeChunkSize*2), // 2 bytes per int16
+		}
+
+		if seekTo > 0 {
+			skipSamples := int64(seekTo*float64(dec.SampleRate())) * 2 // stereo
+			skipBytes := skipSamples * 2                               // int16
+			discardBuf := make([]byte, 8192)
+			for skipBytes > 0 {
+				toRead := int64(len(discardBuf))
+				if skipBytes < toRead {
+					toRead = skipBytes
+				}
+				n, err := dec.Read(discardBuf[:toRead])
+				skipBytes -= int64(n)
+				if err != nil {
+					break
+				}
+			}
+		}
+
+		return cd, nil
+	}
+}
+
+func (c *Mp3ChunkDecoder) ReadSamples(buf []float32) (int, error) {
+	bytesNeeded := len(buf) * 2 // 1 float32 per int16
+	if len(c.buf) < bytesNeeded {
+		c.buf = make([]byte, bytesNeeded)
+	}
+
+	n, err := c.dec.Read(c.buf[:bytesNeeded])
+	if n == 0 && err != nil {
+		if err == io.EOF {
+			return 0, io.EOF
+		}
+		return 0, err
+	}
+
+	converted := ConvertInt16BytesToFloat32(c.buf[:n])
+	// Resample if needed
+	sr := c.dec.SampleRate()
+	if sr != DefaultSampleRate {
+		converted = Resample(converted, sr, DefaultSampleRate, 2)
+	}
+	copy(buf, converted)
+	return len(converted), nil
+}
+
+func (c *Mp3ChunkDecoder) Channels() int      { return DefaultChannels }
+func (c *Mp3ChunkDecoder) SampleRate() int    { return DefaultSampleRate }
+func (c *Mp3ChunkDecoder) TotalFrames() int64 { return c.totalFrames }
+func (c *Mp3ChunkDecoder) Close() error       { return c.f.Close() }

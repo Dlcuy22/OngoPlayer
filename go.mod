@@ -9,4 +9,8 @@ require (
 	github.com/jupiterrider/purego-sdl3 v0.0.0-20260315104720-a5f7946e1e34
 )
 
-require github.com/jfreymuth/vorbis v1.0.2 // indirect
+require (
+	github.com/jfreymuth/vorbis v1.0.2 // indirect
+	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/term v0.42.0 // indirect
+)

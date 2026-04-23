@@ -19,6 +19,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"io"
 	"runtime"
 
 	shared "github.com/dlcuy22/OngoPlayer/internal/shared"
@@ -34,6 +35,8 @@ var (
 	opPcmTotal        func(of uintptr, li int32) int64
 	opChannelCount    func(of uintptr, li int32) int32
 	opFree            func(of uintptr)
+	opPcmSeek         func(of uintptr, pcmOffset int64) int32
+	opPcmTell         func(of uintptr) int64
 )
 
 func initOpusFile() error {
@@ -58,6 +61,8 @@ func initOpusFile() error {
 		purego.RegisterLibFunc(&opPcmTotal, lib, "op_pcm_total")
 		purego.RegisterLibFunc(&opChannelCount, lib, "op_channel_count")
 		purego.RegisterLibFunc(&opFree, lib, "op_free")
+		purego.RegisterLibFunc(&opPcmSeek, lib, "op_pcm_seek")
+		purego.RegisterLibFunc(&opPcmTell, lib, "op_pcm_tell")
 	})
 	return opusfileInitErr
 }
@@ -104,7 +109,7 @@ func (d *OpusDecoder) Decode(path string) (*AudioSource, error) {
 		allSamples = make([]float32, 0, int(totalSamples)*channels)
 	}
 
-	// Read in chunks — op_read_float_stereo returns samples per channel per call
+	// Read in chunks op_read_float_stereo returns samples per channel per call
 	// Buffer: 120ms at 48kHz stereo = 5760 * 2 = 11520 floats
 	buf := make([]float32, 11520)
 
@@ -131,8 +136,6 @@ func (d *OpusDecoder) Decode(path string) (*AudioSource, error) {
 		return nil, fmt.Errorf("no audio data decoded from opus file")
 	}
 
-	// libopusfile always outputs 48kHz stereo — matches our engine exactly.
-	// No resampling or channel conversion needed.
 	return &AudioSource{
 		samples:    allSamples,
 		posFrame:   0,
@@ -140,6 +143,66 @@ func (d *OpusDecoder) Decode(path string) (*AudioSource, error) {
 		sampleRate: DefaultSampleRate,
 	}, nil
 }
+
+type OpusChunkDecoder struct {
+	of          uintptr
+	totalFrames int64
+}
+
+// openOpusChunkDecoder is the openFn for opus, passed to NewStreamingSource.
+func openOpusChunkDecoder(path string) openFn {
+	return func(seekTo float64) (ChunkDecoder, error) {
+		if err := initOpusFile(); err != nil {
+			return nil, err
+		}
+		cPath := append([]byte(path), 0)
+		var opErr int32
+		of := opOpenFile(&cPath[0], &opErr)
+		if of == 0 {
+			return nil, fmt.Errorf("op_open_file failed: code %d", opErr)
+		}
+
+		cd := &OpusChunkDecoder{
+			of:          of,
+			totalFrames: opPcmTotal(of, -1),
+		}
+
+		if seekTo > 0 {
+			targetFrame := int64(seekTo * float64(DefaultSampleRate))
+			if opPcmSeek(of, targetFrame) != 0 {
+				opFree(of)
+				return nil, fmt.Errorf("op_pcm_seek failed")
+			}
+		}
+		return cd, nil
+	}
+}
+
+func (c *OpusChunkDecoder) ReadSamples(buf []float32) (int, error) {
+	n := opReadFloatStereo(c.of, &buf[0], int32(len(buf)))
+	if n == 0 {
+		return 0, io.EOF
+	}
+	if n == -3 {
+		return 0, nil
+	}
+	if n < 0 {
+		return 0, fmt.Errorf("op_read_float_stereo: %d", n)
+	}
+	return int(n) * DefaultChannels, nil
+}
+
+func (c *OpusChunkDecoder) SeekToFrame(frame int64) error {
+	if opPcmSeek(c.of, frame) != 0 {
+		return fmt.Errorf("op_pcm_seek failed")
+	}
+	return nil
+}
+
+func (c *OpusChunkDecoder) Channels() int      { return DefaultChannels }
+func (c *OpusChunkDecoder) SampleRate() int    { return DefaultSampleRate }
+func (c *OpusChunkDecoder) TotalFrames() int64 { return c.totalFrames }
+func (c *OpusChunkDecoder) Close() error       { opFree(c.of); return nil }
 
 // cString converts a Go string to a null-terminated byte pointer.
 // The caller must keep a reference to the returned slice to prevent GC.
