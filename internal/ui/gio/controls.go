@@ -63,13 +63,13 @@ func (c *Controls) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 		pos := c.player.Engine.GetPosition()
 		_ = c.player.Engine.Seek(pos+5, c.player.Volume)
 	}
-
-	playLabel := "Play"
+	// Play Pause label, currently using unicode characters (emojis)
+	playLabel := "▶"
 	state := c.player.Engine.GetState()
 	if state == AudioEngine.StatePlaying {
-		playLabel = "Pause"
+		playLabel = "⏸"
 	}
-
+	// UI CONTROL BOTTOM
 	return layout.Inset{Top: 4, Bottom: 12, Left: 16, Right: 16}.Layout(gtx,
 		func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{
@@ -77,7 +77,7 @@ func (c *Controls) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 				Spacing: layout.SpaceEvenly,
 			}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					btn := material.Button(th, &c.seekLeft, "-5s")
+					btn := material.Button(th, &c.seekLeft, "<-5s")
 					btn.Color = ColorTextDim
 					btn.Background = ColorSurface
 					return btn.Layout(gtx)
@@ -90,8 +90,8 @@ func (c *Controls) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					btn := material.Button(th, &c.btnPlay, playLabel)
-					btn.Color = ColorBg
-					btn.Background = ColorAccent
+					btn.Color = ColorText
+					btn.Background = ColorSurface
 					return btn.Layout(gtx)
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -101,7 +101,7 @@ func (c *Controls) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 					return btn.Layout(gtx)
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					btn := material.Button(th, &c.seekRight, "+5s")
+					btn := material.Button(th, &c.seekRight, "+5s->")
 					btn.Color = ColorTextDim
 					btn.Background = ColorSurface
 					return btn.Layout(gtx)

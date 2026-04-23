@@ -40,7 +40,7 @@ func NewApp(player *Player) *App {
 	w := new(app.Window)
 	w.Option(
 		app.Title("DongoPlayer"),
-		app.Size(420, 700),
+		app.Size(800, 600),
 	)
 
 	th := NewTheme()
