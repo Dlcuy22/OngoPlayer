@@ -5,11 +5,16 @@ import (
 	"os"
 
 	stelleengine "github.com/dlcuy22/OngoPlayer/Audioengine/StelleEngine"
+	shared "github.com/dlcuy22/OngoPlayer/internal/shared"
 	ui "github.com/dlcuy22/OngoPlayer/internal/ui/gio"
 )
 
 func main() {
-	folder := "/home/kasaki/Music/jpop/"
+	folder, err := shared.PickFolder()
+	if err != nil {
+		fmt.Println("Error picking folder:", err)
+		os.Exit(1)
+	}
 	if len(os.Args) > 1 {
 		folder = os.Args[1]
 	}
@@ -28,6 +33,9 @@ func main() {
 	}
 
 	fmt.Printf("Loaded %d tracks from %s\n", len(player.Queue), folder)
+
+	// Play the first track on startup
+	player.PlayTrack(0)
 
 	app := ui.NewApp(player)
 	if err := app.Run(); err != nil {

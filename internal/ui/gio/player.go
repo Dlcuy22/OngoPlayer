@@ -17,8 +17,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	stelleengine "github.com/dlcuy22/OngoPlayer/Audioengine/StelleEngine"
 	"github.com/dhowden/tag"
+	stelleengine "github.com/dlcuy22/OngoPlayer/Audioengine/StelleEngine"
 	"golang.org/x/image/draw"
 )
 

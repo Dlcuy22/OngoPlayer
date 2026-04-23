@@ -65,6 +65,7 @@ func NewApp(player *Player) *App {
 Run starts the Gio event loop. Blocks until the window is closed.
 */
 func (a *App) Run() error {
+
 	go func() {
 		ticker := time.NewTicker(250 * time.Millisecond)
 		defer ticker.Stop()

@@ -3,3 +3,5 @@ sample
 test/
 gui
 nai
+*.exe
+main
