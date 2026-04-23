@@ -233,6 +233,9 @@ func (e *StelleEngine) stopInternal() {
 	}
 
 	if e.streamSrc != nil {
+		// Close ring buffer first to unblock any goroutine stuck in ring.Write()
+		e.streamSrc.ring.Close()
+
 		select {
 		case <-e.streamSrc.stopCh:
 		default:

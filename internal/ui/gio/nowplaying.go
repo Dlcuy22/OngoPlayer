@@ -19,7 +19,10 @@ import (
 )
 
 type NowPlaying struct {
-	player *Player
+	player       *Player
+	cachedPath   string        // path of the track whose cover is cached
+	cachedImgOp  paint.ImageOp // GPU-uploaded texture, reused across frames
+	hasCover     bool
 }
 
 /*
@@ -53,14 +56,26 @@ func (np *NowPlaying) Layout(gtx layout.Context, th *material.Theme) layout.Dime
 					coverSize := gtx.Dp(unit.Dp(80))
 					sz := image.Pt(coverSize, coverSize)
 
-					if track != nil && track.Cover != nil {
-						rgba := toRGBA(track.Cover)
-						imgOp := paint.NewImageOp(rgba)
-						imgOp.Add(gtx.Ops)
+						// Rebuild cached ImageOp only when track changes
+					trackPath := ""
+					if track != nil {
+						trackPath = track.Path
+					}
+					if trackPath != np.cachedPath {
+						np.cachedPath = trackPath
+						if track != nil && track.Cover != nil {
+							np.cachedImgOp = paint.NewImageOp(toRGBA(track.Cover))
+							np.hasCover = true
+						} else {
+							np.hasCover = false
+						}
+					}
 
-						// Scale the image to fit the cover box
-						imgW := float32(rgba.Bounds().Dx())
-						imgH := float32(rgba.Bounds().Dy())
+					if np.hasCover {
+						np.cachedImgOp.Add(gtx.Ops)
+
+						imgW := float32(np.cachedImgOp.Size().X)
+						imgH := float32(np.cachedImgOp.Size().Y)
 						scaleX := float32(coverSize) / imgW
 						scaleY := float32(coverSize) / imgH
 
