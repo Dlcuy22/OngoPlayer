@@ -1,6 +1,8 @@
 # OngoPlayer [![](https://github.com/Dlcuy22/OngoPlayer/actions/workflows/build.yml/badge.svg)](https://github.com/Dlcuy22/OngoPlayer/actions/workflows/build.yml)
 
-## A dead simple Muisc player that's just works
+![OngoPlayer Demo](.github/assets/ongoplayer-demo.webp)
+
+## A dead simple Music player that just works
 
 OngoPlayer uses [purego](https://github.com/ebitengine/purego) to call native audio libraries directly, avoiding the overhead of CGo and providing a fast, efficient audio playback experience.
 
