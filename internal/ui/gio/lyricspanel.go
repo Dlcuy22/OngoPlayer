@@ -15,8 +15,10 @@ import (
 	"fmt"
 	"image"
 	"sort"
+	"strings"
 	"sync"
 
+	"gioui.org/font"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -29,7 +31,7 @@ import (
 )
 
 const (
-	lineHeightDp  = 32
+	lineHeightDp  = 40
 	lyricsLerpFac = 0.15
 	visibleBefore = 8
 	visibleAfter  = 8
@@ -111,8 +113,8 @@ func (lp *LyricsPanel) SetLyrics(lines []lyrics.Line, path string) bool {
 		return false
 	}
 
-	lp.lines = lines
-	if len(lines) > 0 {
+	lp.lines = splitLyricsWrap(lines, 20) // max roughly 45 chars per line
+	if len(lp.lines) > 0 {
 		lp.state = lyricsActive
 	} else {
 		lp.state = lyricsIdle
@@ -252,12 +254,13 @@ func (lp *LyricsPanel) Layout(gtx layout.Context, th *material.Theme) layout.Dim
 
 		layout.Inset{Left: 16, Right: 16}.Layout(lineGtx, func(gtx layout.Context) layout.Dimensions {
 			color := ColorTextDim
-			size := float32(20)
+			size := float32(16)
 			if i == newLine {
 				color = ColorAccent
-				size = 23
+				size = 20
 			}
 			l := LabelStyle(th, size, lines[i].Text, color)
+			l.Font.Weight = font.Weight(font.Regular)
 			l.MaxLines = 1
 			l.Truncator = "..."
 			return l.Layout(gtx)
@@ -282,4 +285,75 @@ func findCurrentLine(lines []lyrics.Line, pos float64) int {
 		idx--
 	}
 	return idx
+}
+
+func splitLyricsWrap(lines []lyrics.Line, maxChars int) []lyrics.Line {
+	if len(lines) == 0 {
+		return lines
+	}
+
+	var result []lyrics.Line
+
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+
+		parts := wordWrap(line.Text, maxChars)
+		if len(parts) <= 1 {
+			result = append(result, line)
+			continue
+		}
+
+		var nextTime float64
+		if i < len(lines)-1 {
+			nextTime = lines[i+1].Time
+		} else {
+			nextTime = line.Time + 5.0
+		}
+
+		totalDuration := nextTime - line.Time
+		if totalDuration <= 0 {
+			totalDuration = float64(len(parts)) * 0.5
+		}
+
+		totalChars := 0
+		for _, p := range parts {
+			totalChars += len(p)
+		}
+
+		currentTime := line.Time
+		for _, p := range parts {
+			result = append(result, lyrics.Line{
+				Time: currentTime,
+				Text: p,
+			})
+			fraction := float64(len(p)) / float64(totalChars)
+			currentTime += totalDuration * fraction
+		}
+	}
+
+	return result
+}
+
+func wordWrap(text string, limit int) []string {
+	if len(text) <= limit {
+		return []string{text}
+	}
+	var parts []string
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return []string{text}
+	}
+	currentLine := words[0]
+	for _, word := range words[1:] {
+		if len(currentLine)+1+len(word) > limit {
+			parts = append(parts, currentLine)
+			currentLine = word
+		} else {
+			currentLine += " " + word
+		}
+	}
+	if currentLine != "" {
+		parts = append(parts, currentLine)
+	}
+	return parts
 }
