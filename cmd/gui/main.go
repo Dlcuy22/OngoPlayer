@@ -1,22 +1,29 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
 	stelleengine "github.com/dlcuy22/OngoPlayer/Audioengine/StelleEngine"
-	shared "github.com/dlcuy22/OngoPlayer/internal/shared"
+	"github.com/dlcuy22/OngoPlayer/internal/shared"
 	ui "github.com/dlcuy22/OngoPlayer/internal/ui/gio"
 )
 
 func main() {
+	debug := flag.Bool("debug", false, "enable debug logging")
+	flag.Parse()
+	shared.Debug = *debug
+
 	folder, err := shared.PickFolder()
 	if err != nil {
 		fmt.Println("Error picking folder:", err)
 		os.Exit(1)
 	}
-	if len(os.Args) > 1 {
-		folder = os.Args[1]
+
+	args := flag.Args()
+	if len(args) > 0 {
+		folder = args[0]
 	}
 
 	engine := stelleengine.NewStelleEngine(1.0)
@@ -34,7 +41,11 @@ func main() {
 
 	fmt.Printf("Loaded %d tracks from %s\n", len(player.Queue), folder)
 
-	// Play the first track on startup
+	if shared.Debug {
+		fmt.Println("[DEBUG] Debug mode enabled")
+		fmt.Printf("[DEBUG] MusicDir: %s\n", player.MusicDir)
+	}
+
 	player.PlayTrack(0)
 
 	app := ui.NewApp(player)

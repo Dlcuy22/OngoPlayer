@@ -182,3 +182,13 @@ func LayoutDivider(gtx layout.Context) layout.Dimensions {
 	paint.FillShape(gtx.Ops, color.NRGBA{R: 60, G: 60, B: 80, A: 255}, r.Op())
 	return layout.Dimensions{Size: sz}
 }
+
+/*
+LayoutVerticalDivider draws a thin vertical line separator.
+*/
+func LayoutVerticalDivider(gtx layout.Context) layout.Dimensions {
+	sz := image.Pt(gtx.Dp(unit.Dp(1)), gtx.Constraints.Max.Y)
+	r := clip.Rect{Max: sz}
+	paint.FillShape(gtx.Ops, color.NRGBA{R: 60, G: 60, B: 80, A: 255}, r.Op())
+	return layout.Dimensions{Size: sz}
+}

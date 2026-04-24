@@ -1,15 +1,38 @@
 // internal/ui/gio/controls.go
-// Playback controls: Previous, Play/Pause, Next, and seek buttons.
+// Playback controls with Material Design icons: Rewind, Previous, Play/Pause, Next, FastForward.
+//
+// Dependencies:
+//   - gioui.org: layout, widget, material
+//   - golang.org/x/exp/shiny/materialdesign/icons: icon data
 
 package gio
 
 import (
 	"gioui.org/layout"
+	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
 
 	AudioEngine "github.com/dlcuy22/OngoPlayer/Audioengine"
+	"golang.org/x/exp/shiny/materialdesign/icons"
 )
+
+var (
+	iconRewind  = mustIcon(icons.AVFastRewind)
+	iconPrev    = mustIcon(icons.AVSkipPrevious)
+	iconPlay    = mustIcon(icons.AVPlayArrow)
+	iconPause   = mustIcon(icons.AVPause)
+	iconNext    = mustIcon(icons.AVSkipNext)
+	iconForward = mustIcon(icons.AVFastForward)
+)
+
+func mustIcon(data []byte) *widget.Icon {
+	ic, err := widget.NewIcon(data)
+	if err != nil {
+		panic(err)
+	}
+	return ic
+}
 
 type Controls struct {
 	player    *Player
@@ -33,7 +56,7 @@ func NewControls(player *Player) *Controls {
 }
 
 /*
-LayoutControls renders the playback control buttons.
+Layout renders the playback control buttons with Material icons.
 
 	params:
 	      gtx: layout context
@@ -63,45 +86,53 @@ func (c *Controls) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 		pos := c.player.Engine.GetPosition()
 		_ = c.player.Engine.Seek(pos+5, c.player.Volume)
 	}
-	// Play Pause label, currently using unicode characters (emojis)
-	playLabel := "▶"
+
+	playIcon := iconPlay
+	playDesc := "Play"
 	state := c.player.Engine.GetState()
 	if state == AudioEngine.StatePlaying {
-		playLabel = "⏸"
+		playIcon = iconPause
+		playDesc = "Pause"
 	}
-	// UI CONTROL BOTTOM
+
 	return layout.Inset{Top: 4, Bottom: 12, Left: 16, Right: 16}.Layout(gtx,
 		func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{
-				Axis:    layout.Horizontal,
-				Spacing: layout.SpaceEvenly,
+				Axis:      layout.Horizontal,
+				Spacing:   layout.SpaceEvenly,
+				Alignment: layout.Middle,
 			}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					btn := material.Button(th, &c.seekLeft, "<-5s")
+					btn := material.IconButton(th, &c.seekLeft, iconRewind, "Rewind 5s")
+					btn.Size = unit.Dp(22)
 					btn.Color = ColorTextDim
 					btn.Background = ColorSurface
 					return btn.Layout(gtx)
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					btn := material.Button(th, &c.btnPrev, "Prev")
+					btn := material.IconButton(th, &c.btnPrev, iconPrev, "Previous")
+					btn.Size = unit.Dp(26)
 					btn.Color = ColorText
 					btn.Background = ColorSurface
 					return btn.Layout(gtx)
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					btn := material.Button(th, &c.btnPlay, playLabel)
+					btn := material.IconButton(th, &c.btnPlay, playIcon, playDesc)
+					btn.Size = unit.Dp(32)
+					btn.Color = ColorBg
+					btn.Background = ColorAccent
+					return btn.Layout(gtx)
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					btn := material.IconButton(th, &c.btnNext, iconNext, "Next")
+					btn.Size = unit.Dp(26)
 					btn.Color = ColorText
 					btn.Background = ColorSurface
 					return btn.Layout(gtx)
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					btn := material.Button(th, &c.btnNext, "Next")
-					btn.Color = ColorText
-					btn.Background = ColorSurface
-					return btn.Layout(gtx)
-				}),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					btn := material.Button(th, &c.seekRight, "+5s->")
+					btn := material.IconButton(th, &c.seekRight, iconForward, "Forward 5s")
+					btn.Size = unit.Dp(22)
 					btn.Color = ColorTextDim
 					btn.Background = ColorSurface
 					return btn.Layout(gtx)

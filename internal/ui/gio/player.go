@@ -10,6 +10,7 @@ package gio
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
@@ -18,6 +19,7 @@ import (
 	"sync"
 
 	"github.com/dhowden/tag"
+	"github.com/dlcuy22/OngoPlayer/internal/shared"
 	stelleengine "github.com/dlcuy22/OngoPlayer/Audioengine/StelleEngine"
 	"golang.org/x/image/draw"
 )
@@ -33,11 +35,13 @@ type TrackMeta struct {
 type Player struct {
 	mu sync.Mutex
 
-	Engine   *stelleengine.StelleEngine
-	Queue    []TrackMeta
-	Current  int
-	Volume   int
-	OnUpdate func() // called to invalidate the window
+	Engine        *stelleengine.StelleEngine
+	Queue         []TrackMeta
+	Current       int
+	Volume        int
+	MusicDir      string
+	OnUpdate      func()
+	OnTrackChange func(track TrackMeta)
 }
 
 /*
@@ -77,6 +81,7 @@ func (p *Player) LoadFolder(folder string) error {
 	defer p.mu.Unlock()
 
 	p.Queue = nil
+	p.MusicDir = folder
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -136,6 +141,14 @@ func (p *Player) PlayTrack(index int) {
 	})
 
 	_ = p.Engine.Play(track.Path, 0, p.Volume)
+
+	if shared.Debug {
+		fmt.Printf("[DEBUG][player] PlayTrack(%d): %q by %q\n", index, track.Title, track.Artist)
+	}
+
+	if p.OnTrackChange != nil {
+		p.OnTrackChange(track)
+	}
 
 	if p.OnUpdate != nil {
 		p.OnUpdate()
