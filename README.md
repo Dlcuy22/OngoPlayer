@@ -28,12 +28,35 @@ Because there is no heavy browser engine underneath, OngoPlayer is extremely lig
 
 ### Linux Requirements
 
-To build and run OngoPlayer natively on Linux, ensure you have the following system dependencies installed (mostly for SDL3 and Gio GPU backend):
-
+**Build Requirements**
+To build OngoPlayer from source on Linux, you need development headers for SDL3 and Gio's GPU backend.
 - `sdl3` (for the audio stream backend)
 - `libvulkan-dev`, `libgl1-mesa-dev`, `libwayland-dev` / `libx11-dev` (for Gio graphics)
 - `libxkbcommon-dev` (for keyboard input mapping)
 - `dbus` (used by XDG Desktop Portal for the native folder picker)
+
+**Runtime Requirements (Audio Codecs)**
+Because OngoPlayer uses pure C-bindings at runtime (without CGo compiling), you must have the specific shared libraries (`.so`) installed on your system to play music:
+- `libmpg123.so.0` (MP3 files)
+- `libopusfile.so.0` (Opus files)
+- `libvorbisfile.so.3` (Ogg Vorbis files)
+
+Install them depending on your distribution:
+
+**Debian/Ubuntu:**
+```bash
+sudo apt-get install libmpg123-0 libopusfile0 libvorbisfile3
+```
+
+**Arch Linux:**
+```bash
+sudo pacman -S mpg123 opusfile libvorbis
+```
+
+**Fedora/RHEL:**
+```bash
+sudo dnf install mpg123-libs opusfile libvorbis
+```
 
 If you are using PulseAudio or PipeWire for sound, SDL3 will pick it up automatically (you can enforce it during dev with `SDL_AUDIODRIVER=pulseaudio`).
 
