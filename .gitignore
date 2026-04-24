@@ -6,3 +6,4 @@ nai
 *.exe
 main
 build/*
+internal/ui/gio/logo.png
