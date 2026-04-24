@@ -156,6 +156,31 @@ func (p *Player) PlayTrack(index int) {
 }
 
 /*
+SetVolume updates the player's volume and propagates it to the engine.
+
+	params:
+	      volume: 0 to 100
+*/
+func (p *Player) SetVolume(volume int) {
+	p.mu.Lock()
+	if volume < 0 {
+		volume = 0
+	}
+	if volume > 100 {
+		volume = 100
+	}
+	p.Volume = volume
+	p.mu.Unlock()
+
+	p.Engine.SetVolume(volume)
+
+	if p.OnUpdate != nil {
+		p.OnUpdate()
+	}
+
+}
+
+/*
 Next advances to the next track in the queue.
 */
 func (p *Player) Next() {

@@ -252,10 +252,10 @@ func (lp *LyricsPanel) Layout(gtx layout.Context, th *material.Theme) layout.Dim
 
 		layout.Inset{Left: 16, Right: 16}.Layout(lineGtx, func(gtx layout.Context) layout.Dimensions {
 			color := ColorTextDim
-			size := float32(13)
+			size := float32(20)
 			if i == newLine {
 				color = ColorAccent
-				size = 15
+				size = 23
 			}
 			l := LabelStyle(th, size, lines[i].Text, color)
 			l.MaxLines = 1

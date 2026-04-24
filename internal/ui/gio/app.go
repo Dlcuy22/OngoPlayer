@@ -48,7 +48,7 @@ func NewApp(player *Player) *App {
 	w := new(app.Window)
 	w.Option(
 		app.Title("DongoPlayer"),
-		app.Size(900, 640),
+		app.Size(900, 540),
 	)
 
 	th := NewTheme()
@@ -64,7 +64,7 @@ func NewApp(player *Player) *App {
 		lyricsOpen:  false,
 	}
 
-	a.header = NewHeader(&a.lyricsOpen)
+	a.header = NewHeader(player, &a.lyricsOpen)
 
 	player.OnUpdate = func() {
 		w.Invalidate()

@@ -338,6 +338,22 @@ func (e *StelleEngine) Seek(position float64, volume int) error {
 }
 
 /*
+SetVolume updates the playback volume dynamically.
+
+	params:
+	      volume: playback volume (0-100)
+*/
+func (e *StelleEngine) SetVolume(volume int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	e.volume = float32(volume) / 100.0
+	if e.streamSrc != nil {
+		e.streamSrc.SetVolume(e.volume)
+	}
+}
+
+/*
 GetState returns the current playback state.
 
 	returns:
