@@ -71,6 +71,8 @@ func NewApp(player *Player) *App {
 	}
 
 	player.OnTrackChange = func(track TrackMeta) {
+		a.lyricsPanel.SetLoading(track.Path)
+		a.window.Invalidate()
 		go a.loadLyrics(track)
 	}
 
@@ -151,7 +153,7 @@ func (a *App) loadLyrics(track TrackMeta) {
 	if shared.Debug {
 		fmt.Println("[DEBUG][lyrics] no lyrics found, clearing panel")
 	}
-	a.lyricsPanel.ClearLyrics()
+	a.lyricsPanel.ClearLyrics(track.Path)
 	a.window.Invalidate()
 }
 
@@ -160,7 +162,7 @@ Run starts the Gio event loop. Blocks until the window is closed.
 */
 func (a *App) Run() error {
 	go func() {
-		ticker := time.NewTicker(250 * time.Millisecond)
+		ticker := time.NewTicker(33 * time.Millisecond)
 		defer ticker.Stop()
 		for range ticker.C {
 			a.window.Invalidate()

@@ -2,6 +2,9 @@
 // Collapsible lyrics panel with synced line highlighting and smooth scroll.
 // Uses lerp-based offset interpolation for animation in Gio's immediate-mode loop.
 //
+// States: idle (no lyrics), loading (fetching), active (displaying lines).
+// Race protection: trackPath is checked before applying fetched results.
+//
 // Dependencies:
 //   - internal/service/lyrics: LRC parsing and fetching
 //   - gioui.org: layout, widget, material, op, paint, clip
@@ -27,16 +30,24 @@ import (
 
 const (
 	lineHeightDp  = 32
-	lyricsLerpFac = 0.10
-	visibleBefore = 6
-	visibleAfter  = 6
+	lyricsLerpFac = 0.15
+	visibleBefore = 8
+	visibleAfter  = 8
+)
+
+type lyricsState int
+
+const (
+	lyricsIdle    lyricsState = iota // no lyrics, nothing happening
+	lyricsLoading                    // fetching from file/API
+	lyricsActive                     // lyrics loaded and displaying
 )
 
 type LyricsPanel struct {
 	mu          sync.Mutex
 	player      *Player
 	lines       []lyrics.Line
-	loaded      bool
+	state       lyricsState
 	currentLine int
 	scrollY     float32
 	trackPath   string
@@ -54,41 +65,89 @@ func NewLyricsPanel(player *Player) *LyricsPanel {
 	return &LyricsPanel{
 		player:      player,
 		currentLine: -1,
+		state:       lyricsIdle,
 	}
 }
 
 /*
-SetLyrics sets the lyrics for the current track.
+SetLoading transitions to the loading state for a new track.
+Clears any existing lyrics immediately to prevent stale display.
+
+	params:
+	      path: track file path (for race protection)
+*/
+func (lp *LyricsPanel) SetLoading(path string) {
+	lp.mu.Lock()
+	defer lp.mu.Unlock()
+	lp.lines = nil
+	lp.state = lyricsLoading
+	lp.trackPath = path
+	lp.currentLine = -1
+	lp.scrollY = 0
+
+	if shared.Debug {
+		fmt.Printf("[DEBUG][lyrics-panel] SetLoading: path=%s\n", path)
+	}
+}
+
+/*
+SetLyrics sets the lyrics for a track. Only applies if path matches
+the current trackPath (race protection against slow goroutines).
 
 	params:
 	      lines: parsed LRC lines
-	      path:  track file path (used to detect track changes)
+	      path:  track file path
+	returns:
+	      bool: true if applied, false if stale
 */
-func (lp *LyricsPanel) SetLyrics(lines []lyrics.Line, path string) {
+func (lp *LyricsPanel) SetLyrics(lines []lyrics.Line, path string) bool {
 	lp.mu.Lock()
 	defer lp.mu.Unlock()
+
+	if lp.trackPath != path {
+		if shared.Debug {
+			fmt.Printf("[DEBUG][lyrics-panel] SetLyrics REJECTED (stale): got path=%s, want path=%s\n", path, lp.trackPath)
+		}
+		return false
+	}
+
 	lp.lines = lines
-	lp.loaded = len(lines) > 0
-	lp.trackPath = path
+	if len(lines) > 0 {
+		lp.state = lyricsActive
+	} else {
+		lp.state = lyricsIdle
+	}
 	lp.currentLine = -1
 	lp.scrollY = 0
 
 	if shared.Debug {
 		fmt.Printf("[DEBUG][lyrics-panel] SetLyrics: %d lines, path=%s\n", len(lines), path)
 	}
+	return true
 }
 
 /*
-ClearLyrics clears the lyrics panel.
+ClearLyrics clears the lyrics panel and sets state to idle.
+Only applies if path matches (race protection).
+
+	params:
+	      path: track file path
 */
-func (lp *LyricsPanel) ClearLyrics() {
+func (lp *LyricsPanel) ClearLyrics(path string) {
 	lp.mu.Lock()
 	defer lp.mu.Unlock()
+
+	if lp.trackPath != path {
+		if shared.Debug {
+			fmt.Printf("[DEBUG][lyrics-panel] ClearLyrics REJECTED (stale): got path=%s, want path=%s\n", path, lp.trackPath)
+		}
+		return
+	}
+
 	lp.lines = nil
-	lp.loaded = false
+	lp.state = lyricsIdle
 	lp.currentLine = -1
 	lp.scrollY = 0
-	lp.trackPath = ""
 
 	if shared.Debug {
 		fmt.Println("[DEBUG][lyrics-panel] ClearLyrics: panel cleared")
@@ -96,7 +155,7 @@ func (lp *LyricsPanel) ClearLyrics() {
 }
 
 /*
-Layout renders the lyrics panel with synced highlighting and smooth scroll.
+Layout renders the lyrics panel based on current state.
 
 	params:
 	      gtx: layout context
@@ -107,21 +166,43 @@ Layout renders the lyrics panel with synced highlighting and smooth scroll.
 func (lp *LyricsPanel) Layout(gtx layout.Context, th *material.Theme) layout.Dimensions {
 	lp.mu.Lock()
 	lines := lp.lines
-	loaded := lp.loaded
+	state := lp.state
 	lp.mu.Unlock()
 
-	// Fill background
 	bgSize := image.Pt(gtx.Constraints.Max.X, gtx.Constraints.Max.Y)
 	bgR := clip.Rect{Max: bgSize}
 	paint.FillShape(gtx.Ops, ColorBg, bgR.Op())
 
-	if !loaded || len(lines) == 0 {
+	switch state {
+	case lyricsLoading:
+		return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			return layout.Flex{Axis: layout.Vertical, Alignment: layout.Middle}.Layout(gtx,
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					loader := material.Loader(th)
+					loader.Color = ColorAccent
+					gtx.Constraints.Max.X = gtx.Dp(unit.Dp(28))
+					gtx.Constraints.Max.Y = gtx.Dp(unit.Dp(28))
+					return loader.Layout(gtx)
+				}),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return layout.Inset{Top: 8}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return DimLabel(th, 12, "Loading lyrics...").Layout(gtx)
+					})
+				}),
+			)
+		})
+
+	case lyricsIdle:
 		return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 			return DimLabel(th, 13, "No lyrics available").Layout(gtx)
 		})
 	}
 
-	// Find current line from playback position
+	// lyricsActive — render synced lines
+	if len(lines) == 0 {
+		return layout.Dimensions{Size: bgSize}
+	}
+
 	pos := lp.player.Engine.GetPosition()
 	newLine := findCurrentLine(lines, pos)
 
@@ -135,7 +216,6 @@ func (lp *LyricsPanel) Layout(gtx layout.Context, th *material.Theme) layout.Dim
 			prevLine, newLine, lines[newLine].Time, lines[newLine].Text)
 	}
 
-	// Calculate target scroll and lerp
 	lineH := float32(gtx.Dp(unit.Dp(lineHeightDp)))
 	panelH := float32(bgSize.Y)
 	centerOffset := panelH / 2
@@ -147,10 +227,8 @@ func (lp *LyricsPanel) Layout(gtx layout.Context, th *material.Theme) layout.Dim
 
 	lp.scrollY += (targetY - lp.scrollY) * lyricsLerpFac
 
-	// Clip the lyrics area
 	defer clip.Rect{Max: bgSize}.Push(gtx.Ops).Pop()
 
-	// Render visible lines centered around current
 	startIdx := newLine - visibleBefore
 	if startIdx < 0 {
 		startIdx = 0
@@ -187,9 +265,6 @@ func (lp *LyricsPanel) Layout(gtx layout.Context, th *material.Theme) layout.Dim
 
 		stack.Pop()
 	}
-
-	// Request redraw for smooth animation
-	// Redraw is driven by the 250ms ticker in app.go
 
 	return layout.Dimensions{Size: bgSize}
 }
