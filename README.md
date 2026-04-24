@@ -1,8 +1,8 @@
-# DongoPlayer [![](https://github.com/Dlcuy22/OngoPlayer/actions/workflows/build.yml/badge.svg)](https://github.com/Dlcuy22/OngoPlayer/actions/workflows/build.yml)
+# OngoPlayer [![](https://github.com/Dlcuy22/OngoPlayer/actions/workflows/build.yml/badge.svg)](https://github.com/Dlcuy22/OngoPlayer/actions/workflows/build.yml)
 
 ## A dead simple Muisc player that's just works
 
-DongoPlayer uses [purego](https://github.com/ebitengine/purego) to call native audio libraries directly, avoiding the overhead of CGo and providing a fast, efficient audio playback experience.
+OngoPlayer uses [purego](https://github.com/ebitengine/purego) to call native audio libraries directly, avoiding the overhead of CGo and providing a fast, efficient audio playback experience.
 
 ### Why use C libs in the first place?
 
@@ -10,13 +10,13 @@ Because almost all audio codec implementations that are actually efficient and f
 
 ### 100% Go & Zero-Bloat
 
-DongoPlayer's GUI uses [Gio](https://gioui.org), an immediate-mode GUI framework written purely in Go.
+OngoPlayer's GUI uses [Gio](https://gioui.org), an immediate-mode GUI framework written purely in Go.
 
 - **NO Electron**
 - **NO WebViews**
 - **Native GPU Rendering** (OpenGL / Vulkan) giving efficient UI interactions.
 
-Because there is no heavy browser engine underneath, DongoPlayer is extremely lightweight, fast, and uses minimal system memory compared to standard modern desktop players.
+Because there is no heavy browser engine underneath, OngoPlayer is extremely lightweight, fast, and uses minimal system memory compared to standard modern desktop players.
 
 ### Features
 
@@ -28,7 +28,7 @@ Because there is no heavy browser engine underneath, DongoPlayer is extremely li
 
 ### Linux Requirements
 
-To build and run DongoPlayer natively on Linux, ensure you have the following system dependencies installed (mostly for SDL3 and Gio GPU backend):
+To build and run OngoPlayer natively on Linux, ensure you have the following system dependencies installed (mostly for SDL3 and Gio GPU backend):
 
 - `sdl3` (for the audio stream backend)
 - `libvulkan-dev`, `libgl1-mesa-dev`, `libwayland-dev` / `libx11-dev` (for Gio graphics)

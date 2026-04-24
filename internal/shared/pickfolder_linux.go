@@ -43,7 +43,7 @@ func PickFolder() (string, error) {
 	}
 	defer conn.Close()
 
-	handleToken := fmt.Sprintf("dongoplayer_%d", time.Now().UnixNano())
+	handleToken := fmt.Sprintf("ongoplayer_%d", time.Now().UnixNano())
 
 	sender := conn.Names()[0]
 	senderPath := strings.ReplaceAll(sender, ".", "_")

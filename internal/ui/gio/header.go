@@ -146,7 +146,7 @@ func (h *Header) Layout(gtx layout.Context, th *material.Theme) layout.Dimension
 
 				// App title
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return DimLabel(th, 20, "DongoPlayer").Layout(gtx)
+					return DimLabel(th, 20, "OngoPlayer").Layout(gtx)
 				}),
 			)
 		},

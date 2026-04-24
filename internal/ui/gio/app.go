@@ -47,7 +47,7 @@ NewApp creates a new Gio application.
 func NewApp(player *Player) *App {
 	w := new(app.Window)
 	w.Option(
-		app.Title("DongoPlayer"),
+		app.Title("OngoPlayer"),
 		app.Size(900, 540),
 	)
 

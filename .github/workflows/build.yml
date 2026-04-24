@@ -2,61 +2,61 @@ name: Build GUI Binaries
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
 
 jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.26.x'
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
 
-    - name: Install Linux GUI Dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y gcc pkg-config libwayland-dev libx11-dev libx11-xcb-dev libxkbcommon-x11-dev libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev libvulkan-dev libasound2-dev
+      - name: Install Linux GUI Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc pkg-config libwayland-dev libx11-dev libx11-xcb-dev libxkbcommon-x11-dev libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev libvulkan-dev libasound2-dev
 
-    - name: Build Windows GUI
-      env:
-        GOOS: windows
-        GOARCH: amd64
-      run: go build -o build/DongoPlayer-gui.exe ./cmd/gui
+      - name: Build Windows GUI
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: go build -o build/OngoPlayer-gui.exe ./cmd/gui
 
-    - name: Build Linux GUI (X11 / No Wayland)
-      env:
-        GOOS: linux
-        GOARCH: amd64
-      run: go build -tags nowayland -o build/DongoPlayer-gui-linux-x11 ./cmd/gui
+      - name: Build Linux GUI (X11 / No Wayland)
+        env:
+          GOOS: linux
+          GOARCH: amd64
+        run: go build -tags nowayland -o build/OngoPlayer-gui-linux-x11 ./cmd/gui
 
-    - name: Build Linux GUI (Wayland)
-      env:
-        GOOS: linux
-        GOARCH: amd64
-      run: go build -tags nox11 -o build/DongoPlayer-gui-linux-wayland ./cmd/gui
+      - name: Build Linux GUI (Wayland)
+        env:
+          GOOS: linux
+          GOARCH: amd64
+        run: go build -tags nox11 -o build/OngoPlayer-gui-linux-wayland ./cmd/gui
 
-    - name: Upload Windows Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: DongoPlayer-Windows-GUI
-        path: build/DongoPlayer-gui.exe
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OngoPlayer-Windows-GUI
+          path: build/OngoPlayer-gui.exe
 
-    - name: Upload Linux X11 Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: DongoPlayer-Linux-X11-GUI
-        path: build/DongoPlayer-gui-linux-x11
+      - name: Upload Linux X11 Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OngoPlayer-Linux-X11-GUI
+          path: build/OngoPlayer-gui-linux-x11
 
-    - name: Upload Linux Wayland Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: DongoPlayer-Linux-Wayland-GUI
-        path: build/DongoPlayer-gui-linux-wayland
+      - name: Upload Linux Wayland Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OngoPlayer-Linux-Wayland-GUI
+          path: build/OngoPlayer-gui-linux-wayland

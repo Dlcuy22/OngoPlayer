@@ -113,7 +113,8 @@ func (lp *LyricsPanel) SetLyrics(lines []lyrics.Line, path string) bool {
 		return false
 	}
 
-	lp.lines = splitLyricsWrap(lines, 20) // max roughly 45 chars per line
+	// THIS FEATURE IS NOT 100% ACCURATE, TO TO 9999 TO DISABLE IT
+	lp.lines = splitLyricsWrap(lines, 25)
 	if len(lp.lines) > 0 {
 		lp.state = lyricsActive
 	} else {

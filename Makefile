@@ -1,4 +1,4 @@
-# MAKEFILE FOR DONGOPLAYER
+# MAKEFILE FOR ONGOPLAYER
 # Build targets for Linux and Windows, GUI (Gio) and TUI modes
 # Usage:
 #   make dev          - Run GUI in dev mode (Linux)
@@ -7,7 +7,7 @@
 #   make build-windows- Cross-compile all Windows binaries
 #   make clean        - Remove build artifacts
 
-APP_NAME  := DongoPlayer
+APP_NAME  := OngoPlayer
 BUILD_DIR := build
 
 .PHONY: dev dev-debug dev-tui
