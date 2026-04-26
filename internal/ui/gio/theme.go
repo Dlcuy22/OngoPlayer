@@ -1,19 +1,26 @@
 // internal/ui/gio/theme.go
 // Defines the dark theme constants and helper functions for the Gio UI.
+// Embeds and loads the NotoSansJP-Bold font for Japanese lyrics rendering.
 //
 // Dependencies:
-//   - gioui.org: color, unit types
+//   - gioui.org: color, unit, text, font, font/opentype, widget/material
 
 package gio
 
 import (
+	_ "embed"
 	"image/color"
+	"log"
 
 	"gioui.org/font"
+	"gioui.org/font/opentype"
 	"gioui.org/text"
 	"gioui.org/unit"
 	"gioui.org/widget/material"
 )
+
+//go:embed fonts/NotoSansJP-Bold.ttf
+var notoSansJPBold []byte
 
 var (
 	ColorBg        = color.NRGBA{R: 30, G: 30, B: 46, A: 255}   // #1e1e2e
@@ -29,6 +36,7 @@ var (
 
 /*
 NewTheme creates a material theme with the dark color palette.
+Loads the embedded NotoSansJP-Bold font into the text shaper.
 
 	returns:
 	      *material.Theme
@@ -40,6 +48,14 @@ func NewTheme() *material.Theme {
 	th.Palette.ContrastBg = ColorAccent
 	th.Palette.ContrastFg = ColorBg
 	th.TextSize = 14
+
+	faces, err := opentype.ParseCollection(notoSansJPBold)
+	if err != nil {
+		log.Printf("[WARN] failed to parse NotoSansJP-Bold: %v", err)
+		return th
+	}
+
+	th.Shaper = text.NewShaper(text.WithCollection(faces))
 	return th
 }
 

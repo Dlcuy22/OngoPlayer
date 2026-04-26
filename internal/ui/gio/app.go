@@ -34,6 +34,7 @@ type App struct {
 	controls    *Controls
 	lyricsPanel *LyricsPanel
 	lyricsOpen  bool
+	split       Split
 }
 
 /*
@@ -62,6 +63,7 @@ func NewApp(player *Player) *App {
 		controls:    NewControls(player),
 		lyricsPanel: NewLyricsPanel(player),
 		lyricsOpen:  false,
+		split:       Split{Ratio: 0.1},
 	}
 
 	a.header = NewHeader(player, &a.lyricsOpen)
@@ -206,21 +208,13 @@ func (a *App) layout(gtx layout.Context) layout.Dimensions {
 				return a.trackList.Layout(gtx, a.theme)
 			}
 
-			return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
-				// Track list (55%)
-				layout.Flexed(0.55, func(gtx layout.Context) layout.Dimensions {
+			return a.split.Layout(gtx,
+				func(gtx layout.Context) layout.Dimensions {
 					return a.trackList.Layout(gtx, a.theme)
-				}),
-
-				// Vertical divider
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return LayoutVerticalDivider(gtx)
-				}),
-
-				// Lyrics panel (45%)
-				layout.Flexed(0.45, func(gtx layout.Context) layout.Dimensions {
+				},
+				func(gtx layout.Context) layout.Dimensions {
 					return a.lyricsPanel.Layout(gtx, a.theme)
-				}),
+				},
 			)
 		}),
 

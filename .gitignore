@@ -7,3 +7,4 @@ nai
 main
 build/*
 internal/ui/gio/logo.png
+internal/ui/gio/reference

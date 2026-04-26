@@ -15,6 +15,7 @@ import (
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 	"gioui.org/unit"
+	"gioui.org/widget"
 	"gioui.org/widget/material"
 )
 
@@ -23,6 +24,7 @@ type NowPlaying struct {
 	cachedPath   string        // path of the track whose cover is cached
 	cachedImgOp  paint.ImageOp // GPU-uploaded texture, reused across frames
 	hasCover     bool
+	seekSlider   widget.Float
 }
 
 /*
@@ -143,26 +145,22 @@ func (np *NowPlaying) layoutProgressBar(gtx layout.Context, th *material.Theme) 
 	pos := np.player.Engine.GetPosition()
 	dur := np.player.Engine.GetDuration()
 
+	if np.seekSlider.Update(gtx) {
+		if dur > 0 {
+			targetPos := float64(np.seekSlider.Value) * dur
+			np.player.Engine.Seek(targetPos, np.player.Volume)
+		}
+	}
+
+	if !np.seekSlider.Dragging() && dur > 0 {
+		np.seekSlider.Value = float32(pos / dur)
+	}
+
 	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			barHeight := gtx.Dp(unit.Dp(4))
-			barWidth := gtx.Constraints.Max.X
-
-			bgSz := image.Pt(barWidth, barHeight)
-			bgR := clip.Rect{Max: bgSz}
-			paint.FillShape(gtx.Ops, ColorBar, bgR.Op())
-
-			if dur > 0 {
-				filled := int(float64(barWidth) * (pos / dur))
-				if filled > barWidth {
-					filled = barWidth
-				}
-				fillSz := image.Pt(filled, barHeight)
-				fillR := clip.Rect{Max: fillSz}
-				paint.FillShape(gtx.Ops, ColorBarFilled, fillR.Op())
-			}
-
-			return layout.Dimensions{Size: bgSz}
+			slider := material.Slider(th, &np.seekSlider)
+			slider.Color = ColorBarFilled
+			return slider.Layout(gtx)
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return layout.Inset{Top: 4}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {

@@ -261,6 +261,7 @@ func (lp *LyricsPanel) Layout(gtx layout.Context, th *material.Theme) layout.Dim
 				size = 20
 			}
 			l := LabelStyle(th, size, lines[i].Text, color)
+			l.Font.Typeface = "Noto Sans JP"
 			l.Font.Weight = font.Weight(font.Regular)
 			l.MaxLines = 1
 			l.Truncator = "..."
