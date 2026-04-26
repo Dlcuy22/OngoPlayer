@@ -2,6 +2,10 @@
 // Player state management. Bridges the StelleEngine with the Gio UI layer.
 // Tracks the queue, current index, metadata, cover art, and playback position.
 //
+// Cover images are stored at two resolutions:
+//   - Thumb (48px): compact sidebar thumbnails
+//   - Cover (256px): main panel album art display
+//
 // Dependencies:
 //   - StelleEngine: audio playback
 //   - dhowden/tag: metadata extraction
@@ -16,11 +20,12 @@ import (
 	_ "image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/dhowden/tag"
-	"github.com/dlcuy22/OngoPlayer/internal/shared"
 	stelleengine "github.com/dlcuy22/OngoPlayer/Audioengine/StelleEngine"
+	"github.com/dlcuy22/OngoPlayer/internal/shared"
 	"golang.org/x/image/draw"
 )
 
@@ -29,7 +34,9 @@ type TrackMeta struct {
 	Title  string
 	Artist string
 	Album  string
-	Cover  image.Image
+	Thumb  image.Image // 48px sidebar thumbnail
+	Cover  image.Image // 256px main panel art
+	Format string
 }
 
 type Player struct {
@@ -45,11 +52,11 @@ type Player struct {
 }
 
 /*
-NewPlayer creates a new player instance with the given engine and volume.
+NewPlayer creates an instance of Player and initializes its fields.
 
 	params:
-	      engine: StelleEngine instance
-	      volume: initial volume (0-100)
+	      engine: Audio engine reference
+	      volume: Initial volume level (0-100)
 	returns:
 	      *Player
 */
@@ -62,12 +69,12 @@ func NewPlayer(engine *stelleengine.StelleEngine, volume int) *Player {
 }
 
 /*
-LoadFolder scans a folder for audio files and extracts metadata for each.
+LoadFolder scans a local directory for audio files and populates the Queue.
 
 	params:
-	      folder: path to the music folder
+	      folder: Path to directory
 	returns:
-	      error
+	      error: Returns on decoding errors or missing paths
 */
 func (p *Player) LoadFolder(folder string) error {
 	exts := map[string]bool{".opus": true, ".mp3": true, ".ogg": true, ".oga": true}
@@ -99,6 +106,11 @@ func (p *Player) LoadFolder(folder string) error {
 
 		if f, err := os.Open(fullPath); err == nil {
 			if m, err := tag.ReadFrom(f); err == nil {
+				meta.Format = string(m.Format())
+				if strings.ToLower(ext) == ".opus" {
+					meta.Format = "OPUS"
+				}
+
 				if t := m.Title(); t != "" {
 					meta.Title = t
 				}
@@ -107,7 +119,8 @@ func (p *Player) LoadFolder(folder string) error {
 
 				if pic := m.Picture(); pic != nil {
 					if img, _, err := image.Decode(bytes.NewReader(pic.Data)); err == nil {
-						meta.Cover = thumbnailCover(img, 96)
+						meta.Thumb = resizeCover(img, 48)
+						meta.Cover = resizeCover(img, 256)
 					}
 				}
 			}
@@ -121,10 +134,10 @@ func (p *Player) LoadFolder(folder string) error {
 }
 
 /*
-PlayTrack starts playing the track at the given index.
+PlayTrack seeks to the specified track index and begins playback.
 
 	params:
-	      index: queue index
+	      index: The queue index to play
 */
 func (p *Player) PlayTrack(index int) {
 	p.mu.Lock()
@@ -156,10 +169,10 @@ func (p *Player) PlayTrack(index int) {
 }
 
 /*
-SetVolume updates the player's volume and propagates it to the engine.
+SetVolume changes the playback volume.
 
 	params:
-	      volume: 0 to 100
+	      volume: Target volume level (0-100)
 */
 func (p *Player) SetVolume(volume int) {
 	p.mu.Lock()
@@ -181,7 +194,8 @@ func (p *Player) SetVolume(volume int) {
 }
 
 /*
-Next advances to the next track in the queue.
+Next advances playback to the next track in the queue, wrapping around.
+
 */
 func (p *Player) Next() {
 	p.mu.Lock()
@@ -194,7 +208,8 @@ func (p *Player) Next() {
 }
 
 /*
-Prev goes back to the previous track in the queue.
+Prev reverses playback to the previous track in the queue, wrapping around.
+
 */
 func (p *Player) Prev() {
 	p.mu.Lock()
@@ -207,7 +222,8 @@ func (p *Player) Prev() {
 }
 
 /*
-TogglePause pauses or resumes playback.
+TogglePause switches between playing and paused state.
+
 */
 func (p *Player) TogglePause() {
 	state := p.Engine.GetState()
@@ -219,10 +235,10 @@ func (p *Player) TogglePause() {
 }
 
 /*
-CurrentTrack returns the metadata of the currently playing track.
+CurrentTrack returns the metadata for the currently active track.
 
 	returns:
-	      *TrackMeta: nil if nothing is playing
+	      *TrackMeta: pointer to the track data, or nil if invalid index
 */
 func (p *Player) CurrentTrack() *TrackMeta {
 	p.mu.Lock()
@@ -235,17 +251,16 @@ func (p *Player) CurrentTrack() *TrackMeta {
 }
 
 /*
-thumbnailCover resizes a cover image to a square thumbnail.
-Uses nearest-neighbor for speed since these are small display thumbnails.
+resizeCover scales a cover image to a square thumbnail using bilinear interpolation.
 
 	params:
-	      src:  original image
+	      src: original image 
 	      size: target width and height in pixels
 	returns:
-	      *image.RGBA
+	      *image.NRGBA: GPU-efficient representation for GioUI
 */
-func thumbnailCover(src image.Image, size int) *image.RGBA {
-	dst := image.NewRGBA(image.Rect(0, 0, size, size))
+func resizeCover(src image.Image, size int) *image.NRGBA {
+	dst := image.NewNRGBA(image.Rect(0, 0, size, size))
 	draw.BiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Over, nil)
 	return dst
 }

@@ -179,6 +179,20 @@ func (s *StreamingAudioSource) Position() float64 {
 }
 
 /*
+SampleRate returns the native sample rate of the loaded audio file.
+*/
+func (s *StreamingAudioSource) SampleRate() int {
+	return s.sampleRate
+}
+
+/*
+Channels returns the native channel count of the loaded audio file.
+*/
+func (s *StreamingAudioSource) Channels() int {
+	return s.channels
+}
+
+/*
 Duration returns the total duration of the audio source in seconds.
 
 	returns:

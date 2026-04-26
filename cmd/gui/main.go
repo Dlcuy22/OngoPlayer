@@ -12,13 +12,20 @@ import (
 
 func main() {
 	debug := flag.Bool("debug", false, "enable debug logging")
+	songfolder := flag.String("playlist", "", "Path to playlist folder")
 	flag.Parse()
 	shared.Debug = *debug
 
-	folder, err := shared.PickFolder()
-	if err != nil {
-		fmt.Println("Error picking folder:", err)
-		os.Exit(1)
+	var folder string
+	var err error
+	if *songfolder == "" {
+		folder, err = shared.PickFolder()
+		if err != nil {
+			fmt.Println("error while picking folder", err)
+			return
+		}
+	} else {
+		folder = *songfolder
 	}
 
 	args := flag.Args()
@@ -27,7 +34,7 @@ func main() {
 	}
 
 	engine := stelleengine.NewStelleEngine(1.0)
-	player := ui.NewPlayer(engine, 100)
+	player := ui.NewPlayer(engine, 25)
 
 	if err := player.LoadFolder(folder); err != nil {
 		fmt.Println("Error loading folder:", err)

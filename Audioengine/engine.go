@@ -30,4 +30,6 @@ type Engine interface {
 	SetOnComplete(callback func())
 	GetPosition() float64
 	GetDuration() float64
+	GetSampleRate() int
+	GetChannels() int
 }

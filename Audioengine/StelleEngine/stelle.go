@@ -408,3 +408,33 @@ func (e *StelleEngine) GetDuration() float64 {
 	}
 	return e.streamSrc.Duration()
 }
+
+/*
+GetSampleRate returns the actual sample rate of the current audio track.
+
+	returns:
+	      int
+*/
+func (e *StelleEngine) GetSampleRate() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.streamSrc != nil {
+		return e.streamSrc.SampleRate()
+	}
+	return DefaultSampleRate
+}
+
+/*
+GetChannels returns the actual channel count of the current audio track.
+
+	returns:
+	      int
+*/
+func (e *StelleEngine) GetChannels() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.streamSrc != nil {
+		return e.streamSrc.Channels()
+	}
+	return DefaultChannels
+}

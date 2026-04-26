@@ -1,6 +1,7 @@
 // internal/ui/gio/app.go
 // Main application window and event loop.
-// Composes header, track list, lyrics panel, now-playing, and controls.
+// Layout: thin header bar at top, then two-panel layout below:
+// fixed-width sidebar (playlist) on the left, main panel on the right.
 //
 // Dependencies:
 //   - gioui.org: app, layout, op, paint, clip
@@ -18,30 +19,30 @@ import (
 	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
+	"gioui.org/unit"
 	"gioui.org/widget/material"
 
 	"github.com/dlcuy22/OngoPlayer/internal/service/lyrics"
 	"github.com/dlcuy22/OngoPlayer/internal/shared"
 )
 
+const sidebarWidthDp = 240
+
 type App struct {
-	window      *app.Window
-	theme       *material.Theme
-	player      *Player
-	header      *Header
-	trackList   *TrackList
-	nowPlaying  *NowPlaying
-	controls    *Controls
-	lyricsPanel *LyricsPanel
-	lyricsOpen  bool
-	split       Split
+	window     *app.Window
+	theme      *material.Theme
+	player     *Player
+	header     *Header
+	trackList  *TrackList
+	nowPlaying *NowPlaying
+	playerBar  *PlayerBar
 }
 
 /*
-NewApp creates a new Gio application.
+NewApp initializes a new OngoPlayer application window.
 
 	params:
-	      player: player state
+	      player: pointer to the initialized Player instance
 	returns:
 	      *App
 */
@@ -49,31 +50,27 @@ func NewApp(player *Player) *App {
 	w := new(app.Window)
 	w.Option(
 		app.Title("OngoPlayer"),
-		app.Size(900, 540),
+		app.Size(730, 650),
 	)
 
 	th := NewTheme()
 
 	a := &App{
-		window:      w,
-		theme:       th,
-		player:      player,
-		trackList:   NewTrackList(player),
-		nowPlaying:  NewNowPlaying(player),
-		controls:    NewControls(player),
-		lyricsPanel: NewLyricsPanel(player),
-		lyricsOpen:  false,
-		split:       Split{Ratio: 0.1},
+		window:     w,
+		theme:      th,
+		player:     player,
+		header:     NewHeader(player),
+		trackList:  NewTrackList(player),
+		nowPlaying: NewNowPlaying(player),
+		playerBar:  NewPlayerBar(player),
 	}
-
-	a.header = NewHeader(player, &a.lyricsOpen)
 
 	player.OnUpdate = func() {
 		w.Invalidate()
 	}
 
 	player.OnTrackChange = func(track TrackMeta) {
-		a.lyricsPanel.SetLoading(track.Path)
+		a.nowPlaying.SetLoading(track.Path)
 		a.window.Invalidate()
 		go a.loadLyrics(track)
 	}
@@ -82,8 +79,10 @@ func NewApp(player *Player) *App {
 }
 
 /*
-loadLyrics tries to load lyrics from file, then falls back to API.
-Runs in a goroutine to avoid blocking the UI.
+loadLyrics attempts to load lyrics for the given track, first from a local file, then from an API.
+
+	params:
+	      track: metadata of the track to load lyrics for
 */
 func (a *App) loadLyrics(track TrackMeta) {
 	musicDir := a.player.MusicDir
@@ -97,19 +96,14 @@ func (a *App) loadLyrics(track TrackMeta) {
 		fmt.Printf("[DEBUG][lyrics]   dir:    %s\n", musicDir)
 	}
 
-	// Try local .lrc file
 	if shared.Debug {
 		fmt.Println("[DEBUG][lyrics] trying local .lrc file...")
 	}
 	if lr, ok := lyrics.LoadFromFile(track.Path, musicDir); ok {
 		if shared.Debug {
 			fmt.Printf("[DEBUG][lyrics] loaded from local file: %d lines\n", len(lr.Lines))
-			if len(lr.Lines) > 0 {
-				fmt.Printf("[DEBUG][lyrics]   first: [%.2fs] %q\n", lr.Lines[0].Time, lr.Lines[0].Text)
-				fmt.Printf("[DEBUG][lyrics]   last:  [%.2fs] %q\n", lr.Lines[len(lr.Lines)-1].Time, lr.Lines[len(lr.Lines)-1].Text)
-			}
 		}
-		a.lyricsPanel.SetLyrics(lr.Lines, track.Path)
+		a.nowPlaying.SetLyrics(lr.Lines, track.Path)
 		a.window.Invalidate()
 		return
 	}
@@ -118,7 +112,6 @@ func (a *App) loadLyrics(track TrackMeta) {
 		fmt.Println("[DEBUG][lyrics] no local file found")
 	}
 
-	// Fallback: fetch from lrclib.net
 	if track.Artist != "" && track.Title != "" {
 		if shared.Debug {
 			fmt.Printf("[DEBUG][lyrics] fetching from lrclib.net (artist=%q, title=%q, album=%q)\n",
@@ -140,7 +133,7 @@ func (a *App) loadLyrics(track TrackMeta) {
 				}
 			}
 
-			a.lyricsPanel.SetLyrics(lines, track.Path)
+			a.nowPlaying.SetLyrics(lines, track.Path)
 			a.window.Invalidate()
 			return
 		}
@@ -155,12 +148,15 @@ func (a *App) loadLyrics(track TrackMeta) {
 	if shared.Debug {
 		fmt.Println("[DEBUG][lyrics] no lyrics found, clearing panel")
 	}
-	a.lyricsPanel.ClearLyrics(track.Path)
+	a.nowPlaying.ClearLyrics(track.Path)
 	a.window.Invalidate()
 }
 
 /*
-Run starts the Gio event loop. Blocks until the window is closed.
+Run starts the main application event loop.
+
+	returns:
+	      error: any error encountered during execution
 */
 func (a *App) Run() error {
 	go func() {
@@ -185,55 +181,61 @@ func (a *App) Run() error {
 	}
 }
 
+/*
+layout defines the main UI structure of the application.
+
+	params:
+	      gtx: layout context
+	returns:
+	      layout.Dimensions
+*/
 func (a *App) layout(gtx layout.Context) layout.Dimensions {
 	bgSize := image.Pt(gtx.Constraints.Max.X, gtx.Constraints.Max.Y)
-	bgR := clip.Rect{Max: bgSize}
-	paint.FillShape(gtx.Ops, ColorBg, bgR.Op())
+	paint.FillShape(gtx.Ops, ColorBg, clip.Rect{Max: bgSize}.Op())
 
-	return layout.Flex{
-		Axis: layout.Vertical,
-	}.Layout(gtx,
-		// Header bar
+	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+		// Header bar (top, spans full width)
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return a.header.Layout(gtx, a.theme)
 		}),
 
+		// Divider under header
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return LayoutDivider(gtx)
 		}),
 
-		// Middle area: TrackList (+ optional LyricsPanel)
+		// Body: sidebar + divider + main panel
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-			if !a.lyricsOpen {
-				return a.trackList.Layout(gtx, a.theme)
-			}
+			sidebarW := gtx.Dp(unit.Dp(sidebarWidthDp))
+			mainW := gtx.Constraints.Max.X - sidebarW - gtx.Dp(unit.Dp(1))
 
-			return a.split.Layout(gtx,
-				func(gtx layout.Context) layout.Dimensions {
+			return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+				// Sidebar
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					gtx.Constraints.Min.X = sidebarW
+					gtx.Constraints.Max.X = sidebarW
 					return a.trackList.Layout(gtx, a.theme)
-				},
-				func(gtx layout.Context) layout.Dimensions {
-					return a.lyricsPanel.Layout(gtx, a.theme)
-				},
+				}),
+
+				// Vertical divider
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return LayoutVerticalDivider(gtx)
+				}),
+
+				// Main panel
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					gtx.Constraints.Min.X = mainW
+					gtx.Constraints.Max.X = mainW
+					return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+						layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+							return a.nowPlaying.Layout(gtx, a.theme)
+						}),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return a.playerBar.Layout(gtx, a.theme)
+						}),
+					)
+				}),
 			)
-		}),
-
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return LayoutDivider(gtx)
-		}),
-
-		// Now playing
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return a.nowPlaying.Layout(gtx, a.theme)
-		}),
-
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return LayoutDivider(gtx)
-		}),
-
-		// Controls
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return a.controls.Layout(gtx, a.theme)
 		}),
 	)
 }
