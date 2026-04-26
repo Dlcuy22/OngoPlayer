@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: ["main", "master"]
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build:
     name: Build ${{ matrix.name }}
@@ -67,10 +64,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.26.x"
 
@@ -87,7 +84,7 @@ jobs:
         run: go build ${{ matrix.tags }} -o build/${{ matrix.output }} ${{ matrix.path }}
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.output }}
           path: build/${{ matrix.output }}
