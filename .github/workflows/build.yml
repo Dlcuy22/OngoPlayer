@@ -1,4 +1,4 @@
-name: Build GUI Binaries
+name: Build Binaries
 
 on:
   push:
@@ -8,8 +8,59 @@ on:
 
 jobs:
   build:
-    name: Build
+    name: Build ${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: "Windows GUI"
+            os: windows
+            arch: amd64
+            tags: ""
+            path: "./cmd/gui"
+            output: "OngoPlayer-gui-windows.exe"
+            install_deps: false
+
+          - name: "Windows TUI"
+            os: windows
+            arch: amd64
+            tags: ""
+            path: "./cmd/tui"
+            output: "OngoPlayer-tui-windows.exe"
+            install_deps: false
+
+          - name: "Linux X11 OpenGL GUI"
+            os: linux
+            arch: amd64
+            tags: "-tags nowayland"
+            path: "./cmd/gui"
+            output: "OngoPlayer-gui-linux-x11gl"
+            install_deps: true
+
+          - name: "Linux Wayland OpenGL GUI"
+            os: linux
+            arch: amd64
+            tags: "-tags nox11"
+            path: "./cmd/gui"
+            output: "OngoPlayer-gui-linux-wayopengl"
+            install_deps: true
+
+          - name: "Linux Wayland Vulkan GUI"
+            os: linux
+            arch: amd64
+            tags: "-tags nox11,noopengl"
+            path: "./cmd/gui"
+            output: "OngoPlayer-gui-linux-wayvulkan"
+            install_deps: true
+
+          - name: "Linux TUI"
+            os: linux
+            arch: amd64
+            tags: ""
+            path: "./cmd/tui"
+            output: "OngoPlayer-tui-linux"
+            install_deps: true
 
     steps:
       - name: Checkout repository
@@ -20,43 +71,20 @@ jobs:
         with:
           go-version: "1.26.x"
 
-      - name: Install Linux GUI Dependencies
+      - name: Install Linux Dependencies
+        if: matrix.install_deps == true
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc pkg-config libwayland-dev libx11-dev libx11-xcb-dev libxkbcommon-x11-dev libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev libvulkan-dev libasound2-dev
 
-      - name: Build Windows GUI
+      - name: Build Binary
         env:
-          GOOS: windows
-          GOARCH: amd64
-        run: go build -o build/OngoPlayer-gui.exe ./cmd/gui
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: go build ${{ matrix.tags }} -o build/${{ matrix.output }} ${{ matrix.path }}
 
-      - name: Build Linux GUI (X11 / No Wayland)
-        env:
-          GOOS: linux
-          GOARCH: amd64
-        run: go build -tags nowayland -o build/OngoPlayer-gui-linux-x11 ./cmd/gui
-
-      - name: Build Linux GUI (Wayland)
-        env:
-          GOOS: linux
-          GOARCH: amd64
-        run: go build -tags nox11 -o build/OngoPlayer-gui-linux-wayland ./cmd/gui
-
-      - name: Upload Windows Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OngoPlayer-Windows-GUI
-          path: build/OngoPlayer-gui.exe
-
-      - name: Upload Linux X11 Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: OngoPlayer-Linux-X11-GUI
-          path: build/OngoPlayer-gui-linux-x11
-
-      - name: Upload Linux Wayland Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: OngoPlayer-Linux-Wayland-GUI
-          path: build/OngoPlayer-gui-linux-wayland
+          name: ${{ matrix.output }}
+          path: build/${{ matrix.output }}

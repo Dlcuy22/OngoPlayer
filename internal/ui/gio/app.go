@@ -94,7 +94,7 @@ func (a *App) loadLyrics(track TrackMeta) {
 	musicDir := a.player.MusicDir
 
 	if shared.Debug {
-		fmt.Println("[DEBUG][lyrics] ── track changed ──")
+		fmt.Println("[DEBUG][lyrics] > track changed")
 		fmt.Printf("[DEBUG][lyrics]   title:  %q\n", track.Title)
 		fmt.Printf("[DEBUG][lyrics]   artist: %q\n", track.Artist)
 		fmt.Printf("[DEBUG][lyrics]   album:  %q\n", track.Album)

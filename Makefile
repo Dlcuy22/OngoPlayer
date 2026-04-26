@@ -9,14 +9,14 @@
 
 APP_NAME  := OngoPlayer
 BUILD_DIR := build
+WAYVULKAN_TAGS := nox11,noopengl
+WAYOPENGL_TAGS := nox11
+X11GL_TAGS := nowayland
 
 .PHONY: dev dev-debug dev-tui
 
 dev:
 	SDL_AUDIODRIVER=pulseaudio go run --tags "nowayland noopengl" cmd/gui/main.go --debug
-
-dev-zink:
-	MESA_LOADER_DRIVER_OVERRIDE=zink GALLIUM_DRIVER=zink SDL_AUDIODRIVER=pulseaudio mangohud go run --tags nowayland cmd/gui/main.go  --debug --playlist "/home/kasaki/Music/jpop"
 
 dev-wayvulkan:
 	SDL_AUDIODRIVER=pulseaudio go run --tags nox11,noopengl cmd/gui/main.go  --debug --playlist "/home/kasaki/Music/jpop"
@@ -31,7 +31,7 @@ dev-tui:
 build: build-linux-gui build-linux-tui
 
 build-linux-gui:
-	GOOS=linux GOARCH=amd64 go build -tags nowayland \
+	GOOS=linux GOARCH=amd64 go build $(WAYVULKAN_TAGS) \
 		-o $(BUILD_DIR)/$(APP_NAME)-gui ./cmd/gui
 
 build-linux-tui:

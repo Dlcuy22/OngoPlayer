@@ -192,10 +192,11 @@ func cleanMetadataStrings(s string) []string {
 		return nil
 	}
 
-	// 2. If it contains a slash, it's often dual language (e.g. Japanese / Romaji)
-	if strings.Contains(s, "/") {
+	// 2. If it contains a slash or double-space, it's often dual language (e.g. "なとり / natori", "Kenshi Yonezu  米津玄師")
+	normalized := strings.ReplaceAll(s, "  ", "/")
+	if strings.Contains(normalized, "/") {
 		var aliases []string
-		parts := strings.Split(s, "/")
+		parts := strings.Split(normalized, "/")
 		for _, p := range parts {
 			cleaned := strings.TrimSpace(p)
 			if cleaned != "" {
