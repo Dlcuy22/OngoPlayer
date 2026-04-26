@@ -172,7 +172,7 @@ func SaveToFile(songPath, musicDir, content string) (string, error) {
 
 /*
 cleanMetadataStrings cleans metadata strings (artist, title) from common
-junk suffixes like " - Topic" and splits dual-language naming (e.g. "なとり / natori").
+junk suffixes like " - Topic" and splits dual-language naming (e.g. "なとり / natori") and more
 It returns a slice of potential search aliases.
 
 	params:
@@ -183,6 +183,9 @@ It returns a slice of potential search aliases.
 func cleanMetadataStrings(s string) []string {
 	// 1. Remove common YouTube/Auto-gen suffixes
 	s = strings.ReplaceAll(s, " - Topic", "")
+	s = strings.ReplaceAll(s, " official YouTube channel", "")
+	s = strings.ReplaceAll(s, "VEVO", "")
+	s = strings.ReplaceAll(s, " official", "")
 	s = strings.TrimSpace(s)
 
 	if s == "" {
@@ -211,19 +214,21 @@ func cleanMetadataStrings(s string) []string {
 FetchFromAPI fetches synced lyrics from lrclib.net.
 
 Strategy:
+
  1. Try the /api/get endpoint with exact artist, title, album, and duration
-    for a precise single-result match. We iterate over cleaned aliases.
+    for a precise single-result match. Iterates over cleaned aliases.
+
  2. If that fails, fall back to /api/search with artist_name + track_name,
     then score and filter results by artist/title similarity and duration proximity.
 
-	params:
-	      artist:      artist name from file metadata
-	      title:       track title from file metadata
-	      album:       album name from file metadata
-	      durationSec: track duration in seconds (from the audio engine)
-	returns:
-	      string: raw synced LRC content
-	      error
+    params:
+    artist:      artist name from file metadata
+    title:       track title from file metadata
+    album:       album name from file metadata
+    durationSec: track duration in seconds (from the audio engine)
+    returns:
+    string: raw synced LRC content
+    error
 */
 func FetchFromAPI(artist, title, album string, durationSec float64) (string, error) {
 	artistAliases := cleanMetadataStrings(artist)
@@ -345,9 +350,9 @@ func trySearchEndpoint(artist, title, album string, durationSec float64) (string
 			continue
 		}
 
-		// Because we're using aliases (e.g. querying "natori" but r.ArtistName is "なとり"),
-		// we must check if ANY of our aliases are contained within the result's artist name,
-		// or vice-versa, to be lenient enough but still safe.
+		// Due to the use of aliases (e.g. querying "natori" but r.ArtistName is "なとり"),
+		// it checks if ANY of the aliases are contained within the result's artist name,
+		// or vice-versa, to maintain leniency while ensuring safety.
 		artistMatch := false
 		rArtist := strings.ToLower(r.ArtistName)
 		artistAliases := cleanMetadataStrings(artist)
@@ -384,7 +389,7 @@ func trySearchEndpoint(artist, title, album string, durationSec float64) (string
 		return "", fmt.Errorf("no matching synced lyrics found")
 	}
 
-	// If we have a known duration, pick the candidate with closest match
+	// If there is a known duration, pick the candidate with closest match
 	if durationSec > 0 && len(candidates) > 1 {
 		sort.Slice(candidates, func(i, j int) bool {
 			diffI := math.Abs(candidates[i].Duration - durationSec)

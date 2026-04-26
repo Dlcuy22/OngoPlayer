@@ -127,7 +127,8 @@ func (p *Player) LoadFolder(folder string) error {
 				if pic := m.Picture(); pic != nil {
 					if img, _, err := image.Decode(bytes.NewReader(pic.Data)); err == nil {
 						meta.Thumb = resizeCover(img, 48)
-						meta.Cover = resizeCover(img, 256)
+						// The 256px cover art is lazy-loaded in PlayTrack to save RAM
+						// and is intentionally excluded here.
 					}
 				}
 			}
@@ -142,11 +143,14 @@ func (p *Player) LoadFolder(folder string) error {
 
 /*
 PlayTrack seeks to the specified track index and begins playback.
+It also lazy-loads the track's cover art and clears previous covers to save RAM.
 
 	params:
 	      index: The queue index to play
 */
 func (p *Player) PlayTrack(index int) {
+	p.populateCover(index)
+
 	p.mu.Lock()
 	if index < 0 || index >= len(p.Queue) {
 		p.mu.Unlock()
@@ -198,6 +202,44 @@ func (p *Player) SetVolume(volume int) {
 		p.OnUpdate()
 	}
 
+}
+
+/*
+populateCover lazy-loads the 256x256 cover art for the given index,
+and aggressively sets all other loaded covers to nil to free memory.
+*/
+func (p *Player) populateCover(targetIdx int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Clear all other covers to free up RAM footprint immediately
+	for i := range p.Queue {
+		if i != targetIdx {
+			p.Queue[i].Cover = nil
+		}
+	}
+
+	if targetIdx < 0 || targetIdx >= len(p.Queue) {
+		return
+	}
+
+	// Already loaded? Return early
+	if p.Queue[targetIdx].Cover != nil {
+		return
+	}
+
+	// Lazy load tag.Picture
+	meta := &p.Queue[targetIdx]
+	if f, err := os.Open(meta.Path); err == nil {
+		if m, err := tag.ReadFrom(f); err == nil {
+			if pic := m.Picture(); pic != nil {
+				if img, _, err := image.Decode(bytes.NewReader(pic.Data)); err == nil {
+					meta.Cover = resizeCover(img, 256)
+				}
+			}
+		}
+		f.Close()
+	}
 }
 
 /*
