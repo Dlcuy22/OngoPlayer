@@ -2,86 +2,118 @@
 
 ![OngoPlayer Demo](.github/assets/ongoplayer-demo-newui.webp)
 
-## A dead simple Music player that just works
+A dead simple music player that just works.
 
-OngoPlayer uses [purego](https://github.com/ebitengine/purego) to call native audio libraries directly, avoiding the overhead of CGo and providing a fast, efficient audio playback experience.
+---
 
-### Why use C libs in the first place?
+## How it works
 
-Because almost all audio codec implementations that are actually efficient and fast are written in C, and I don't want to reimplement all of them in Go, nor can I guarantee the same speed and performance as the official C implementations.
+OngoPlayer uses [purego](https://github.com/ebitengine/purego) to call native audio libraries directly at runtime, with no CGo involved. The GUI is built with [Gio](https://gioui.org), an immediate-mode GUI toolkit written in pure Go (not to be confused with the purego library mentioned above). Together they keep the binary small, the build simple, and the runtime lean.
 
-### 100% Go & Zero-Bloat
+### Why C libraries for audio?
 
-OngoPlayer's GUI uses [Gio](https://gioui.org), an immediate-mode GUI framework written purely in Go.
+Every mature audio codec implementation (MP3, Opus, Vorbis, FLAC) is written in C. Reimplementing them in Go would mean slower decoding, missing edge-case handling, and a maintenance burden that isn't worth taking on. purego lets OngoPlayer use the real implementations without a CGo compile step, so the codec work happens in the system libraries and the Go code stays clean.
 
-- **NO Electron**
-- **NO WebViews**
-- **Native GPU Rendering** (OpenGL / Vulkan) giving efficient UI interactions.
+### No browser engine
 
-Because there is no heavy browser engine underneath, OngoPlayer is extremely lightweight, fast, and uses minimal system memory compared to standard modern desktop players.
+Gio renders using OpenGL ES and Vulkan directly, with no Electron, no WebView, and no browser engine underneath. The result is a native window with GPU-accelerated drawing and a memory footprint that reflects what the app actually does, not what Chromium needs.
 
-### Features
+---
 
-- **GPU Accelerated GUI**: Uses Gioui for layout and rendering.
-- **Dynamic Synced Lyrics**: Loads `.lrc` files locally or falls back to fetching them on the fly via the [LRClib API](https://lrclib.net), complete with auto-wrapping and scrolling.
-- **Fast Audio Decoding**: Leverages SDL3 and native codecs (libopus, libvorbis, libmp3lame) using purego, zero CGo linking required.
-- **Cross-Platform Folders**: Native folder-picker integration via D-Bus (Linux XDG Desktop Portal) and WinAPI (Windows).
-- **Responsive Layout**: Wide track view, cover art caching, and customizable layout sizing.
+## Features
 
-### Linux Requirements
+- **Synced lyrics**: loads `.lrc` files from disk; falls back to the [LRClib API](https://lrclib.net) if none is found, with auto-wrap and scroll.
+- **Audio format support**: MP3, Opus, Ogg Vorbis, FLAC, via libmpg123, libopusfile, libvorbisfile, and libFLAC.
+- **Native folder picker**: XDG Desktop Portal over D-Bus on Linux; WinAPI on Windows.
+- **CJK font support**: full Unicode rendering for lyric content.
+- **Cover art caching**, responsive layout, wide track view.
 
-**Build Requirements**
-To build OngoPlayer from source on Linux, you need development headers for SDL3 and Gio's GPU backend.
+---
 
-- `sdl3` (for the audio stream backend)
-- `libvulkan-dev`, `libgl1-mesa-dev`, `libwayland-dev` / `libx11-dev` (for Gio graphics)
-- `libxkbcommon-dev` (for keyboard input mapping)
-- `dbus` (used by XDG Desktop Portal for the native folder picker)
+## Linux
 
-**Runtime Requirements (Audio Codecs)**
-Because OngoPlayer uses pure C-bindings at runtime (without CGo compiling), you must have the specific shared libraries (`.so`) installed on your system to play music:
+### Build dependencies
 
-- `libmpg123.so.0` (MP3 files)
-- `libopusfile.so.0` (Opus files)
-- `libvorbisfile.so.3` (Ogg Vorbis files)
-- `libFLAC.so.14` or `libFLAC.so.12` (FLAC files)
+Gio requires development headers for its GPU and windowing backends. Install these before building:
 
-Install them depending on your distribution:
-
-**Debian/Ubuntu:**
+**Debian / Ubuntu:**
 
 ```bash
-sudo apt-get install libmpg123-0 libopusfile0 libvorbisfile3 libflac12
+sudo apt install gcc pkg-config \
+  libwayland-dev libx11-dev libx11-xcb-dev \
+  libxkbcommon-x11-dev libxcursor-dev \
+  libgles2-mesa-dev libegl1-mesa-dev \
+  libffi-dev libvulkan-dev
 ```
 
 **Arch Linux:**
 
 ```bash
-sudo pacman -S mpg123 opusfile libvorbis flac
+sudo pacman -S base-devel wayland libx11 libxkbcommon libxcursor \
+  mesa vulkan-headers
 ```
 
-**Fedora/RHEL:**
+**Fedora / RHEL:**
 
 ```bash
-sudo dnf install mpg123-libs opusfile libvorbis flac-libs
+sudo dnf install gcc pkg-config wayland-devel libX11-devel \
+  libxkbcommon-x11-devel libXcursor-devel \
+  mesa-libGLES-devel mesa-libEGL-devel \
+  libffi-devel vulkan-headers
 ```
 
-If you are using PulseAudio or PipeWire for sound, SDL3 will pick it up automatically (you can enforce it during dev with `SDL_AUDIODRIVER=pulseaudio`).
+Vulkan support is optional but recommended for best rendering performance. You can verify it with `vulkaninfo`. On distributions like Arch, a Vulkan driver is not installed automatically; check your GPU vendor's package (`vulkan-radeon`, `vulkan-intel`, etc.).
 
-### Windows (Coming Soon)
+### Runtime dependencies (audio codecs)
 
-A pre-packaged Windows installer is currently in development! It will auto-bundle all necessary DLLs (like SDL3.dll) and dependencies out-of-the-box so you can run the app with absolute zero manual configuration.
+Because OngoPlayer loads codec libraries at runtime via purego, they do not need to be present at build time, only when you run the app. Install the shared libraries for whichever formats you want to play:
 
-### Roadmap
+| Library                            | Format                          |
+| ---------------------------------- | ------------------------------- |
+| `libmpg123.so.0`                   | MP3                             |
+| `libopusfile.so.0`                 | Opus                            |
+| `libvorbisfile.so.3`               | Ogg Vorbis                      |
+| `libFLAC.so.14` or `libFLAC.so.12` | FLAC                            |
+| `libSDL3.so.0`                     | audio stream backend (required) |
 
-- [x] Usable, GPU-based graphical user interface (Gio)
-- [x] Automatic synced lyric resolver & viewer ([LRClib](https://lrclib.net))
-- [x] Add more lossless audio format support (FLAC bindings)
-- [x] Full CJK font support for seamless lyric rendering
-- [ ] Keyboard shortcut system (Space, Arrow keys, etc.)
-- [ ] Multi-provider online music streaming (integrating `yt-dlp` for YouTube Music search & playback)
-- [ ] Right Panel Expansion (Tabbed layout for Equalizer & Settings)
+**Debian / Ubuntu:**
+
+```bash
+sudo apt install libmpg123-0 libopusfile0 libvorbisfile3 libflac12 libsdl3-0
+```
+
+**Arch Linux:**
+
+```bash
+sudo pacman -S mpg123 opusfile libvorbis flac sdl3
+```
+
+**Fedora / RHEL:**
+
+```bash
+sudo dnf install mpg123-libs opusfile libvorbis flac-libs SDL3
+```
+
+SDL3 integrates with PulseAudio and PipeWire automatically. During development you can force a specific backend with `SDL_AUDIODRIVER=pulseaudio`.
 
 ---
 
-**Status:** In active development, still in early stage
+## Windows
+
+A packaged Windows installer is in development. It will bundle SDL3.dll and the required codec DLLs, so no manual setup will be needed.
+
+---
+
+## Roadmap
+
+- [x] GPU-accelerated GUI via Gio
+- [x] Synced lyric resolver and viewer (LRClib)
+- [x] FLAC support
+- [x] CJK font rendering
+- [ ] Keyboard shortcuts (space, arrow keys, etc.)
+- [ ] Online music streaming via yt-dlp (YouTube Music)
+- [ ] Right panel with tabbed equalizer and settings
+
+---
+
+**Status:** early-stage, in active development.

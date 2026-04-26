@@ -13,13 +13,17 @@ BUILD_DIR := build
 .PHONY: dev dev-debug dev-tui
 
 dev:
-	SDL_AUDIODRIVER=pulseaudio go run --tags nowayland cmd/gui/main.go
+	SDL_AUDIODRIVER=pulseaudio go run --tags "nowayland noopengl" cmd/gui/main.go --debug
 
-dev-debug:
-	SDL_AUDIODRIVER=pulseaudio go run --tags nowayland cmd/gui/main.go --debug
+dev-zink:
+	MESA_LOADER_DRIVER_OVERRIDE=zink GALLIUM_DRIVER=zink SDL_AUDIODRIVER=pulseaudio mangohud go run --tags nowayland cmd/gui/main.go  --debug --playlist "/home/kasaki/Music/jpop"
+
+dev-wayvulkan:
+	SDL_AUDIODRIVER=pulseaudio go run --tags nox11,noopengl cmd/gui/main.go  --debug --playlist "/home/kasaki/Music/jpop"
 
 dev-tui:
 	go run cmd/tui/main.go
+
 
 
 .PHONY: build build-linux-gui build-linux-tui
