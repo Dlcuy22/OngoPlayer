@@ -13,6 +13,7 @@ import (
 func main() {
 	debug := flag.Bool("debug", false, "enable debug logging")
 	songfolder := flag.String("playlist", "", "Path to playlist folder")
+	enableRPC := flag.Bool("rpc", false, "enable Discord Rich Presence")
 	flag.Parse()
 	shared.Debug = *debug
 
@@ -56,6 +57,7 @@ func main() {
 	player.PlayTrack(0)
 
 	app := ui.NewApp(player)
+	app.EnableRPC = *enableRPC
 	if err := app.Run(); err != nil {
 		fmt.Println("Error:", err)
 		os.Exit(1)

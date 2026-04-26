@@ -181,7 +181,7 @@ It returns a slice of potential search aliases.
 	      []string: list of cleaned aliases
 */
 func cleanMetadataStrings(s string) []string {
-	// 1. Remove common YouTube/Auto-gen suffixes
+	// Remove common YouTube/Auto-gen suffixes
 	s = strings.ReplaceAll(s, " - Topic", "")
 	s = strings.ReplaceAll(s, " official YouTube channel", "")
 	s = strings.ReplaceAll(s, "VEVO", "")
@@ -192,7 +192,9 @@ func cleanMetadataStrings(s string) []string {
 		return nil
 	}
 
-	// 2. If it contains a slash or double-space, it's often dual language (e.g. "なとり / natori", "Kenshi Yonezu  米津玄師")
+	/* If it contains a slash or double-space
+	   it's often dual language (e.g. "なとり / natori", "Kenshi Yonezu  米津玄師")
+	*/
 	normalized := strings.ReplaceAll(s, "  ", "/")
 	if strings.Contains(normalized, "/") {
 		var aliases []string

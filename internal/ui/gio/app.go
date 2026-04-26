@@ -22,6 +22,8 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget/material"
 
+	"github.com/dlcuy22/OngoPlayer/Audioengine"
+	"github.com/dlcuy22/OngoPlayer/internal/service/discordrpc"
 	"github.com/dlcuy22/OngoPlayer/internal/service/lyrics"
 	"github.com/dlcuy22/OngoPlayer/internal/shared"
 )
@@ -36,6 +38,8 @@ type App struct {
 	trackList  *TrackList
 	nowPlaying *NowPlaying
 	playerBar  *PlayerBar
+	rpc        *discordrpc.Manager
+	EnableRPC  bool
 }
 
 /*
@@ -73,6 +77,7 @@ func NewApp(player *Player) *App {
 		a.nowPlaying.SetLoading(track.Path)
 		a.window.Invalidate()
 		go a.loadLyrics(track)
+		go a.updateRPC(track)
 	}
 
 	if len(player.Queue) > 0 {
@@ -165,6 +170,22 @@ Run starts the main application event loop.
 	      error: any error encountered during execution
 */
 func (a *App) Run() error {
+	if a.EnableRPC {
+		a.rpc = discordrpc.New()
+		a.rpc.GetPosition = func() float64 {
+			return a.player.Engine.GetPosition()
+		}
+		a.rpc.IsPaused = func() bool {
+			return a.player.Engine.GetState() == AudioEngine.StatePaused
+		}
+		a.rpc.Start()
+
+		// Send initial track info so the presence appears immediately
+		if len(a.player.Queue) > 0 && a.player.Current >= 0 {
+			go a.updateRPC(a.player.Queue[a.player.Current])
+		}
+	}
+
 	go func() {
 		ticker := time.NewTicker(33 * time.Millisecond)
 		defer ticker.Stop()
@@ -178,6 +199,9 @@ func (a *App) Run() error {
 	for {
 		switch e := a.window.Event().(type) {
 		case app.DestroyEvent:
+			if a.rpc != nil {
+				a.rpc.Stop()
+			}
 			return e.Err
 		case app.FrameEvent:
 			gtx := app.NewContext(&ops, e)
@@ -185,6 +209,39 @@ func (a *App) Run() error {
 			e.Frame(gtx.Ops)
 		}
 	}
+}
+
+/*
+updateRPC sends the current track metadata to the Discord RPC manager.
+Skipped silently if RPC is disabled.
+
+	params:
+	      track: metadata of the currently playing track
+*/
+func (a *App) updateRPC(track TrackMeta) {
+	if a.rpc == nil {
+		if shared.Debug {
+			fmt.Println("[DEBUG][rpc] skipped: rpc manager is nil")
+		}
+		return
+	}
+
+	dur := a.player.Engine.GetDuration()
+	pos := a.player.Engine.GetPosition()
+	if shared.Debug {
+		fmt.Printf("[DEBUG][rpc] sending update: title=%q artist=%q elapsed=%.1fs duration=%.1fs\n",
+			track.Title, track.Artist, pos, dur)
+	}
+
+	a.rpc.Update(discordrpc.TrackInfo{
+		Title:       track.Title,
+		Artist:      track.Artist,
+		Album:       track.Album,
+		Cover:       track.Thumb,
+		DurationSec: dur,
+		ElapsedSec:  pos,
+		IsPaused:    a.player.Engine.GetState() == AudioEngine.StatePaused,
+	})
 }
 
 /*

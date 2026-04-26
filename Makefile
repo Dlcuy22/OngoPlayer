@@ -19,7 +19,7 @@ dev:
 	SDL_AUDIODRIVER=pulseaudio go run --tags "nowayland noopengl" cmd/gui/main.go --debug
 
 dev-wayvulkan:
-	SDL_AUDIODRIVER=pulseaudio go run --tags nox11,noopengl cmd/gui/main.go  --debug --playlist "/home/kasaki/Music/jpop"
+	SDL_AUDIODRIVER=pulseaudio go run --tags nox11,noopengl cmd/gui/main.go  --debug --playlist "/home/kasaki/Music/agak fayer"
 
 dev-tui:
 	go run cmd/tui/main.go
