@@ -44,25 +44,26 @@ Because OngoPlayer uses pure C-bindings at runtime (without CGo compiling), you 
 - `libmpg123.so.0` (MP3 files)
 - `libopusfile.so.0` (Opus files)
 - `libvorbisfile.so.3` (Ogg Vorbis files)
+- `libFLAC.so.14` or `libFLAC.so.12` (FLAC files)
 
 Install them depending on your distribution:
 
 **Debian/Ubuntu:**
 
 ```bash
-sudo apt-get install libmpg123-0 libopusfile0 libvorbisfile3
+sudo apt-get install libmpg123-0 libopusfile0 libvorbisfile3 libflac12
 ```
 
 **Arch Linux:**
 
 ```bash
-sudo pacman -S mpg123 opusfile libvorbis
+sudo pacman -S mpg123 opusfile libvorbis flac
 ```
 
 **Fedora/RHEL:**
 
 ```bash
-sudo dnf install mpg123-libs opusfile libvorbis
+sudo dnf install mpg123-libs opusfile libvorbis flac-libs
 ```
 
 If you are using PulseAudio or PipeWire for sound, SDL3 will pick it up automatically (you can enforce it during dev with `SDL_AUDIODRIVER=pulseaudio`).
@@ -75,10 +76,12 @@ A pre-packaged Windows installer is currently in development! It will auto-bundl
 
 - [x] Usable, GPU-based graphical user interface (Gio)
 - [x] Automatic synced lyric resolver & viewer ([LRClib](https://lrclib.net))
-- [ ] Add more lossless audio format support (FLAC bindings)
-- [ ] Full CJK font support for seamless lyric rendering
+- [x] Add more lossless audio format support (FLAC bindings)
+- [x] Full CJK font support for seamless lyric rendering
 - [ ] Keyboard shortcut system (Space, Arrow keys, etc.)
+- [ ] Multi-provider online music streaming (integrating `yt-dlp` for YouTube Music search & playback)
+- [ ] Right Panel Expansion (Tabbed layout for Equalizer & Settings)
 
 ---
 
-**Status:** In active development. Let the music play.
+**Status:** In active development, still in early stage
