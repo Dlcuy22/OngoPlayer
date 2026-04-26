@@ -97,7 +97,7 @@ func (tl *TrackList) Layout(gtx layout.Context, th *material.Theme) layout.Dimen
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return layout.Inset{Top: 14, Bottom: 8, Left: 16, Right: 16}.Layout(gtx,
 				func(gtx layout.Context) layout.Dimensions {
-					l := material.Label(th, unit.Sp(13), "PLAYLIST")
+					l := material.Label(th, unit.Sp(13), "ONGOPLAYER")
 					l.Color = color.NRGBA{R: 255, G: 255, B: 255, A: 89}
 					return l.Layout(gtx)
 				},

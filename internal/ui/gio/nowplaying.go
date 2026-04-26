@@ -106,8 +106,8 @@ func (np *NowPlaying) SetLyrics(lines []lyrics.Line, path string) bool {
 	if np.trackPath != path {
 		return false
 	}
-
-	np.lyricsLines = splitLyricsWrap(lines, 30)
+	// set to 9999 to disable the lyric wrap
+	np.lyricsLines = splitLyricsWrap(lines, 9999)
 	if len(np.lyricsLines) > 0 {
 		np.lyricsState = 2
 	} else {

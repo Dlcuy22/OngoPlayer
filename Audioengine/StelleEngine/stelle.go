@@ -67,6 +67,8 @@ func openFnForFile(filePath string) (openFn, error) {
 		return openOpusChunkDecoder(filePath), nil
 	case ".mp3":
 		return openMp3ChunkDecoder(filePath), nil
+	case ".flac":
+		return openFlacChunkDecoder(filePath), nil
 	case ".ogg", ".oga":
 		return openVorbisChunkDecoder(filePath), nil
 	default:

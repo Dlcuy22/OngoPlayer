@@ -77,7 +77,7 @@ LoadFolder scans a local directory for audio files and populates the Queue.
 	      error: Returns on decoding errors or missing paths
 */
 func (p *Player) LoadFolder(folder string) error {
-	exts := map[string]bool{".opus": true, ".mp3": true, ".ogg": true, ".oga": true}
+	exts := map[string]bool{".opus": true, ".mp3": true, ".ogg": true, ".oga": true, ".flac": true}
 
 	entries, err := os.ReadDir(folder)
 	if err != nil {
@@ -109,8 +109,15 @@ func (p *Player) LoadFolder(folder string) error {
 				meta.Format = string(m.Format())
 				if strings.ToLower(ext) == ".opus" {
 					meta.Format = "OPUS"
+				} else if strings.ToLower(ext) == ".mp3" {
+					meta.Format = "MP3"
+				} else if strings.ToLower(ext) == ".flac" {
+					meta.Format = "FLAC"
+				} else if strings.ToLower(ext) == ".ogg" || strings.ToLower(ext) == ".oga" {
+					meta.Format = "OGG"
+				} else {
+					meta.Format = "unknown"
 				}
-
 				if t := m.Title(); t != "" {
 					meta.Title = t
 				}
@@ -195,7 +202,6 @@ func (p *Player) SetVolume(volume int) {
 
 /*
 Next advances playback to the next track in the queue, wrapping around.
-
 */
 func (p *Player) Next() {
 	p.mu.Lock()
@@ -209,7 +215,6 @@ func (p *Player) Next() {
 
 /*
 Prev reverses playback to the previous track in the queue, wrapping around.
-
 */
 func (p *Player) Prev() {
 	p.mu.Lock()
@@ -223,7 +228,6 @@ func (p *Player) Prev() {
 
 /*
 TogglePause switches between playing and paused state.
-
 */
 func (p *Player) TogglePause() {
 	state := p.Engine.GetState()
@@ -254,7 +258,7 @@ func (p *Player) CurrentTrack() *TrackMeta {
 resizeCover scales a cover image to a square thumbnail using bilinear interpolation.
 
 	params:
-	      src: original image 
+	      src: original image
 	      size: target width and height in pixels
 	returns:
 	      *image.NRGBA: GPU-efficient representation for GioUI

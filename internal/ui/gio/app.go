@@ -75,6 +75,12 @@ func NewApp(player *Player) *App {
 		go a.loadLyrics(track)
 	}
 
+	if len(player.Queue) > 0 {
+		track := player.Queue[player.Current]
+		a.nowPlaying.SetLoading(track.Path)
+		go a.loadLyrics(track)
+	}
+
 	return a
 }
 
@@ -117,7 +123,7 @@ func (a *App) loadLyrics(track TrackMeta) {
 			fmt.Printf("[DEBUG][lyrics] fetching from lrclib.net (artist=%q, title=%q, album=%q)\n",
 				track.Artist, track.Title, track.Album)
 		}
-		content, err := lyrics.FetchFromAPI(track.Artist, track.Title, track.Album)
+		content, err := lyrics.FetchFromAPI(track.Artist, track.Title, track.Album, a.player.Engine.GetDuration())
 		if err == nil && content != "" {
 			lines := lyrics.Parse(content)
 			if shared.Debug {
