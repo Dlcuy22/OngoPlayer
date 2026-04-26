@@ -1,6 +1,6 @@
 # OngoPlayer [![](https://github.com/Dlcuy22/OngoPlayer/actions/workflows/build.yml/badge.svg)](https://github.com/Dlcuy22/OngoPlayer/actions/workflows/build.yml)
 
-![OngoPlayer Demo](.github/assets/ongoplayer-demo.webp)
+![OngoPlayer Demo](.github/assets/ongoplayer-demo-newui.webp)
 
 ## A dead simple Music player that just works
 
@@ -32,6 +32,7 @@ Because there is no heavy browser engine underneath, OngoPlayer is extremely lig
 
 **Build Requirements**
 To build OngoPlayer from source on Linux, you need development headers for SDL3 and Gio's GPU backend.
+
 - `sdl3` (for the audio stream backend)
 - `libvulkan-dev`, `libgl1-mesa-dev`, `libwayland-dev` / `libx11-dev` (for Gio graphics)
 - `libxkbcommon-dev` (for keyboard input mapping)
@@ -39,6 +40,7 @@ To build OngoPlayer from source on Linux, you need development headers for SDL3 
 
 **Runtime Requirements (Audio Codecs)**
 Because OngoPlayer uses pure C-bindings at runtime (without CGo compiling), you must have the specific shared libraries (`.so`) installed on your system to play music:
+
 - `libmpg123.so.0` (MP3 files)
 - `libopusfile.so.0` (Opus files)
 - `libvorbisfile.so.3` (Ogg Vorbis files)
@@ -46,16 +48,19 @@ Because OngoPlayer uses pure C-bindings at runtime (without CGo compiling), you 
 Install them depending on your distribution:
 
 **Debian/Ubuntu:**
+
 ```bash
 sudo apt-get install libmpg123-0 libopusfile0 libvorbisfile3
 ```
 
 **Arch Linux:**
+
 ```bash
 sudo pacman -S mpg123 opusfile libvorbis
 ```
 
 **Fedora/RHEL:**
+
 ```bash
 sudo dnf install mpg123-libs opusfile libvorbis
 ```
