@@ -73,7 +73,7 @@ jobs:
           GOARCH: ${{ matrix.arch }}
         run: |
           if [ "${{ matrix.name }}" = "Windows GUI" ]; then
-            go run gioui.org/cmd/gogio@latest -target windows -icon ./cmd/gui/assets/appicon.png -o build/${{ matrix.output }} ${{ matrix.path }}
+            GOOS= GOARCH= go run gioui.org/cmd/gogio@latest -target windows -icon ./cmd/gui/assets/appicon.png -o build/${{ matrix.output }} ${{ matrix.path }}
           else
             go build ${{ matrix.tags }} -o build/${{ matrix.output }} ${{ matrix.path }}
           fi
