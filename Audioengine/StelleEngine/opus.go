@@ -39,8 +39,8 @@ var (
 )
 
 /*
-initOpusFile loads libopusfile and registers all required C function symbols.
-Called once via sync.Once on first use.
+initOpusFile loads libopusfile and registers all required C function symbols
+Called once via sync.Once on first use
 */
 func initOpusFile() error {
 	opusfileOnce.Do(func() {

@@ -1,10 +1,9 @@
-swatch
 sample
 test/
-gui
-nai
 *.exe
-main
 build/*
-internal/ui/gio/logo.png
 internal/ui/gio/reference
+*.syso
+tools/build
+*dll
+build2

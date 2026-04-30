@@ -46,6 +46,9 @@ build-windows-gui:
 	GOOS=windows GOARCH=amd64 go build \
 		-o $(BUILD_DIR)/$(APP_NAME)-gui.exe ./cmd/gui
 
+build-windows-release:
+	gogio -target windows -icon .\cmd\gui\assets\appicon.png -o build\win\OngoPlayer.exe ./cmd/gui
+	
 build-windows-tui:
 	GOOS=windows GOARCH=amd64 go build \
 		-o $(BUILD_DIR)/$(APP_NAME)-tui.exe ./cmd/tui

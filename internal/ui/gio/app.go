@@ -22,7 +22,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget/material"
 
-	"github.com/dlcuy22/OngoPlayer/Audioengine"
+	AudioEngine "github.com/dlcuy22/OngoPlayer/Audioengine"
 	"github.com/dlcuy22/OngoPlayer/internal/service/discordrpc"
 	"github.com/dlcuy22/OngoPlayer/internal/service/lyrics"
 	"github.com/dlcuy22/OngoPlayer/internal/shared"
@@ -55,6 +55,7 @@ func NewApp(player *Player) *App {
 	w.Option(
 		app.Title("OngoPlayer"),
 		app.Size(730, 650),
+		app.Decorated(false), // disable window decorations, TODO: create custom ones for dragging/resizing/close/minimize
 	)
 
 	th := NewTheme()
@@ -63,7 +64,7 @@ func NewApp(player *Player) *App {
 		window:     w,
 		theme:      th,
 		player:     player,
-		header:     NewHeader(player),
+		header:     NewHeader(player, w),
 		trackList:  NewTrackList(player),
 		nowPlaying: NewNowPlaying(player),
 		playerBar:  NewPlayerBar(player),
@@ -207,6 +208,9 @@ func (a *App) Run() error {
 			gtx := app.NewContext(&ops, e)
 			a.layout(gtx)
 			e.Frame(gtx.Ops)
+
+		case app.ConfigEvent:
+			a.header.SetMaximized(e.Config.Mode == app.Maximized)
 		}
 	}
 }

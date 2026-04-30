@@ -52,7 +52,7 @@ func initVorbisFile() error {
 		case "linux", "freebsd":
 			filename = "libvorbisfile.so.3"
 		case "windows":
-			filename = "libvorbisfile.dll"
+			filename = "libvorbisfile-3.dll"
 		case "darwin":
 			filename = "libvorbisfile.dylib"
 		}

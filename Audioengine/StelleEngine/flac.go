@@ -31,13 +31,13 @@ var (
 	flacOnce    sync.Once
 	flacInitErr error
 
-	flac_new             func() uintptr
-	flac_init_file       func(decoder uintptr, filename *byte, write_cb uintptr, metadata_cb uintptr, err_cb uintptr, client_data uintptr) uint32
-	flac_process_meta    func(decoder uintptr) int32
-	flac_process_single  func(decoder uintptr) int32
-	flac_seek_absolute   func(decoder uintptr, sample int64) int32
-	flac_delete          func(decoder uintptr)
-	flac_finish          func(decoder uintptr) int32
+	flac_new            func() uintptr
+	flac_init_file      func(decoder uintptr, filename *byte, write_cb uintptr, metadata_cb uintptr, err_cb uintptr, client_data uintptr) uint32
+	flac_process_meta   func(decoder uintptr) int32
+	flac_process_single func(decoder uintptr) int32
+	flac_seek_absolute  func(decoder uintptr, sample int64) int32
+	flac_delete         func(decoder uintptr)
+	flac_finish         func(decoder uintptr) int32
 
 	writeCbHandle    uintptr
 	metadataCbHandle uintptr
@@ -71,7 +71,10 @@ func initFlacBindings() error {
 		for _, fn := range filenames {
 			lib, err = shared.Load(fn)
 			if err == nil {
+				fmt.Printf("Loaded FLAC library: %s\n", fn)
 				break
+			} else {
+				fmt.Printf("Failed to load FLAC library: %s (%v)\n", fn, err)
 			}
 		}
 
@@ -99,7 +102,7 @@ func initFlacBindings() error {
 flacWriteCallback is called by libFLAC when audio samples are decoded.
 It converts internal int32 samples to float32 and interleaves them.
 */
-func flacWriteCallback(decoder uintptr, frame uintptr, buffer uintptr, client_data uintptr) uint32 {
+func flacWriteCallback(decoder uintptr, frame uintptr, buffer uintptr, client_data uintptr) uintptr {
 	id := int32(client_data)
 	cdIntf, ok := flacInstances.Load(id)
 	if !ok {
@@ -147,11 +150,11 @@ func flacWriteCallback(decoder uintptr, frame uintptr, buffer uintptr, client_da
 flacMetadataCallback is called by libFLAC when metadata blocks are encountered.
 Used to extract STREAMINFO (sample rate, channels, bit depth, total samples).
 */
-func flacMetadataCallback(decoder uintptr, metadata uintptr, client_data uintptr) {
+func flacMetadataCallback(decoder uintptr, metadata uintptr, client_data uintptr) uintptr {
 	id := int32(client_data)
 	cdIntf, ok := flacInstances.Load(id)
 	if !ok {
-		return
+		return 0
 	}
 	cd := cdIntf.(*FlacChunkDecoder)
 
@@ -174,13 +177,15 @@ func flacMetadataCallback(decoder uintptr, metadata uintptr, client_data uintptr
 		}
 		cd.totalFrames = int64(*(*uint64)(unsafe.Pointer(streamInfoBase + tsOffset)))
 	}
+	return 0
 }
 
 /*
 flacErrorCallback handles decoder errors reported by libFLAC.
 */
-func flacErrorCallback(decoder uintptr, status uint32, client_data uintptr) {
+func flacErrorCallback(decoder uintptr, status uint32, client_data uintptr) uintptr {
 	// Ignore errors, handled in process loops if critical
+	return 0
 }
 
 type FlacDecoder struct{}
@@ -216,15 +221,15 @@ func isFlacFile(path string) bool {
 }
 
 type FlacChunkDecoder struct {
-	id          int32
-	dh          uintptr
-	channels    int
-	sampleRate  int
+	id            int32
+	dh            uintptr
+	channels      int
+	sampleRate    int
 	bitsPerSample int
-	totalFrames int64
-	stagingBuf  []float32
-	stagePos    int
-	stageLen    int
+	totalFrames   int64
+	stagingBuf    []float32
+	stagePos      int
+	stageLen      int
 }
 
 /*
