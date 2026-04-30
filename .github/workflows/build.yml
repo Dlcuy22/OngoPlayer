@@ -22,13 +22,6 @@ jobs:
             output: "OngoPlayer-gui-windows.exe"
             install_deps: true
 
-          - name: "Windows TUI"
-            os: windows
-            arch: amd64
-            tags: ""
-            path: "./cmd/tui"
-            output: "OngoPlayer-tui-windows.exe"
-            install_deps: false
 
           - name: "Linux X11 OpenGL GUI"
             os: linux
@@ -54,13 +47,6 @@ jobs:
             output: "OngoPlayer-gui-linux-wayvulkan"
             install_deps: true
 
-          - name: "Linux TUI"
-            os: linux
-            arch: amd64
-            tags: ""
-            path: "./cmd/tui"
-            output: "OngoPlayer-tui-linux"
-            install_deps: true
 
     steps:
       - name: Checkout repository
@@ -87,8 +73,7 @@ jobs:
           GOARCH: ${{ matrix.arch }}
         run: |
           if [ "${{ matrix.name }}" = "Windows GUI" ]; then
-            go install gioui.org/cmd/gogio@latest
-            $(go env GOPATH)/bin/gogio -target windows -icon ./cmd/gui/assets/appicon.png -o build/${{ matrix.output }} ${{ matrix.path }}
+            go run gioui.org/cmd/gogio@latest -target windows -icon ./cmd/gui/assets/appicon.png -o build/${{ matrix.output }} ${{ matrix.path }}
           else
             go build ${{ matrix.tags }} -o build/${{ matrix.output }} ${{ matrix.path }}
           fi
