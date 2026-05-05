@@ -191,7 +191,9 @@ func (a *App) Run() error {
 		ticker := time.NewTicker(33 * time.Millisecond)
 		defer ticker.Stop()
 		for range ticker.C {
-			a.window.Invalidate()
+			if a.player.Engine.GetState() == AudioEngine.StatePlaying {
+				a.window.Invalidate()
+			}
 		}
 	}()
 

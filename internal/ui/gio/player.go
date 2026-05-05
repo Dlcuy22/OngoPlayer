@@ -19,24 +19,19 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/dhowden/tag"
+	"github.com/dlcuy22/OngoPlayer/Audioengine/MetaResolver"
 	stelleengine "github.com/dlcuy22/OngoPlayer/Audioengine/StelleEngine"
 	"github.com/dlcuy22/OngoPlayer/internal/shared"
 	"golang.org/x/image/draw"
 )
 
 type TrackMeta struct {
-	Path   string
-	Title  string
-	Artist string
-	Album  string
-	Thumb  image.Image // 48px sidebar thumbnail
-	Cover  image.Image // 256px main panel art
-	Format string
+	MetaResolver.TrackMeta
+	Thumb image.Image // 48px sidebar thumbnail
+	Cover image.Image // 256px main panel art
 }
 
 type Player struct {
@@ -70,6 +65,8 @@ func NewPlayer(engine *stelleengine.StelleEngine, volume int) *Player {
 
 /*
 LoadFolder scans a local directory for audio files and populates the Queue.
+Delegates metadata resolution to the shared MetaResolver package, then
+generates Gio-specific image thumbnails from the raw cover bytes.
 
 	params:
 	      folder: Path to directory
@@ -77,9 +74,7 @@ LoadFolder scans a local directory for audio files and populates the Queue.
 	      error: Returns on decoding errors or missing paths
 */
 func (p *Player) LoadFolder(folder string) error {
-	exts := map[string]bool{".opus": true, ".mp3": true, ".ogg": true, ".oga": true, ".flac": true}
-
-	entries, err := os.ReadDir(folder)
+	metas, err := MetaResolver.ScanFolder(folder)
 	if err != nil {
 		return err
 	}
@@ -89,53 +84,17 @@ func (p *Player) LoadFolder(folder string) error {
 
 	p.Queue = nil
 	p.MusicDir = folder
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		ext := filepath.Ext(e.Name())
-		if !exts[ext] {
-			continue
-		}
+	for _, m := range metas {
+		track := TrackMeta{TrackMeta: m}
 
-		fullPath := filepath.Join(folder, e.Name())
-		meta := TrackMeta{
-			Path:  fullPath,
-			Title: e.Name(),
-		}
-
-		if f, err := os.Open(fullPath); err == nil {
-			if m, err := tag.ReadFrom(f); err == nil {
-				meta.Format = string(m.Format())
-				if strings.ToLower(ext) == ".opus" {
-					meta.Format = "OPUS"
-				} else if strings.ToLower(ext) == ".mp3" {
-					meta.Format = "MP3"
-				} else if strings.ToLower(ext) == ".flac" {
-					meta.Format = "FLAC"
-				} else if strings.ToLower(ext) == ".ogg" || strings.ToLower(ext) == ".oga" {
-					meta.Format = "OGG"
-				} else {
-					meta.Format = "unknown"
-				}
-				if t := m.Title(); t != "" {
-					meta.Title = t
-				}
-				meta.Artist = m.Artist()
-				meta.Album = m.Album()
-
-				if pic := m.Picture(); pic != nil {
-					if img, _, err := image.Decode(bytes.NewReader(pic.Data)); err == nil {
-						meta.Thumb = resizeCover(img, 48)
-						// The 256px cover art is lazy-loaded in PlayTrack to save RAM
-						// and is intentionally excluded here.
-					}
-				}
+		// Generate 48px thumbnail from raw cover bytes
+		if len(m.CoverData) > 0 {
+			if img, _, err := image.Decode(bytes.NewReader(m.CoverData)); err == nil {
+				track.Thumb = resizeCover(img, 48)
 			}
-			f.Close()
 		}
 
-		p.Queue = append(p.Queue, meta)
+		p.Queue = append(p.Queue, track)
 	}
 
 	return nil
@@ -228,17 +187,12 @@ func (p *Player) populateCover(targetIdx int) {
 		return
 	}
 
-	// Lazy load tag.Picture
+	// Decode 256px cover from raw CoverData bytes
 	meta := &p.Queue[targetIdx]
-	if f, err := os.Open(meta.Path); err == nil {
-		if m, err := tag.ReadFrom(f); err == nil {
-			if pic := m.Picture(); pic != nil {
-				if img, _, err := image.Decode(bytes.NewReader(pic.Data)); err == nil {
-					meta.Cover = resizeCover(img, 256)
-				}
-			}
+	if len(meta.CoverData) > 0 {
+		if img, _, err := image.Decode(bytes.NewReader(meta.CoverData)); err == nil {
+			meta.Cover = resizeCover(img, 256)
 		}
-		f.Close()
 	}
 }
 

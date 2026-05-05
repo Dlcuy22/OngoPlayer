@@ -14,10 +14,6 @@ OngoPlayer uses [purego](https://github.com/ebitengine/purego) to call native au
 
 Every mature audio codec implementation (MP3, Opus, Vorbis, FLAC) is written in C. Reimplementing them in Go would mean slower decoding, missing edge-case handling, and a maintenance burden that isn't worth taking on. purego lets OngoPlayer use the real implementations without a CGo compile step, so the codec work happens in the system libraries and the Go code stays clean.
 
-### No browser engine
-
-Gio renders using OpenGL ES and Vulkan directly, with no Electron, no WebView, and no browser engine underneath. The result is a native window with GPU-accelerated drawing and a memory footprint that reflects what the app actually does, not what Chromium needs.
-
 ---
 
 ## Features

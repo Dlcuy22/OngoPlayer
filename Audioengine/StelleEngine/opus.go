@@ -21,7 +21,7 @@ import (
 	"sync"
 	"unsafe"
 
-	shared "github.com/dlcuy22/OngoPlayer/internal/shared"
+	"github.com/dlcuy22/OngoPlayer/Audioengine/loader"
 	"github.com/ebitengine/purego"
 )
 
@@ -54,7 +54,7 @@ func initOpusFile() error {
 			filename = "libopusfile.0.dylib"
 		}
 
-		lib, err := shared.Load(filename)
+		lib, err := loader.Load(filename)
 		if err != nil {
 			panic(fmt.Errorf("failed to load opusfile library (%s): %w", filename, err))
 		}

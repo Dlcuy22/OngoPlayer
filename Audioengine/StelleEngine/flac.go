@@ -23,7 +23,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/dlcuy22/OngoPlayer/internal/shared"
+	"github.com/dlcuy22/OngoPlayer/Audioengine/loader"
 	"github.com/ebitengine/purego"
 )
 
@@ -69,7 +69,7 @@ func initFlacBindings() error {
 		var lib uintptr
 		var err error
 		for _, fn := range filenames {
-			lib, err = shared.Load(fn)
+			lib, err = loader.Load(fn)
 			if err == nil {
 				fmt.Printf("Loaded FLAC library: %s\n", fn)
 				break

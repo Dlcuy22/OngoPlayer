@@ -1,0 +1,35 @@
+@font-face {
+    font-family: "NotoSansJP";
+    font-style: normal;
+    font-weight: 700;
+    src: url("assets/fonts/NotoSansJP-Bold.ttf") format("truetype");
+}
+
+/* Solid UI Paradigm */
+body {
+    margin: 0;
+    font-family: "NotoSansJP", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background-color: #1e1e2e;
+    color: #e0e0e0;
+
+    /* Native feel */
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: default;
+}
+
+input, textarea {
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+button, input {
+    outline: none;
+    font-family: inherit;
+}
+
+#app {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}

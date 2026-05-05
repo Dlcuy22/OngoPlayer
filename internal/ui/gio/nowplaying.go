@@ -33,9 +33,9 @@ import (
 const (
 	artSizeDp    = 240
 	lineHeightDp = 36
-	lyricsLerp   = 0.15
-	lyricsBefore = 6
-	lyricsAfter  = 6
+	lyricsLerp   = 0.1
+	lyricsBefore = 4
+	lyricsAfter  = 4
 )
 
 type NowPlaying struct {
@@ -67,8 +67,6 @@ func NewNowPlaying(player *Player) *NowPlaying {
 		currentLine: -1,
 	}
 }
-
-// --- Lyrics management ---
 
 /*
 SetLoading indicates that lyrics for the given path are currently being loaded.
@@ -137,8 +135,6 @@ func (np *NowPlaying) ClearLyrics(path string) {
 	np.currentLine = -1
 	np.scrollY = 0
 }
-
-// --- Layout ---
 
 /*
 Layout renders the NowPlaying component, including album art and inline lyrics.
@@ -261,6 +257,8 @@ func (np *NowPlaying) layoutAlbumArt(gtx layout.Context, track *TrackMeta) layou
 	return layout.Dimensions{Size: sz}
 }
 
+// SYNCED LYRIC ANIMATION LAYOUT
+// TODO: optimize this for lower gpu usage
 func (np *NowPlaying) layoutLyrics(gtx layout.Context, th *material.Theme) layout.Dimensions {
 	np.lyricsMu.Lock()
 	lines := np.lyricsLines
@@ -302,7 +300,15 @@ func (np *NowPlaying) layoutLyrics(gtx layout.Context, th *material.Theme) layou
 	if targetY < 0 {
 		targetY = 0
 	}
-	np.scrollY += (targetY - np.scrollY) * lyricsLerp
+	delta := targetY - np.scrollY
+	if delta < 0 {
+		delta = -delta
+	}
+	if delta < 0.5 {
+		np.scrollY = targetY
+	} else {
+		np.scrollY += (targetY - np.scrollY) * lyricsLerp
+	}
 
 	defer clip.Rect{Max: panelSize}.Push(gtx.Ops).Pop()
 

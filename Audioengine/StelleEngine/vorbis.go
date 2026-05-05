@@ -22,7 +22,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/dlcuy22/OngoPlayer/internal/shared"
+	"github.com/dlcuy22/OngoPlayer/Audioengine/loader"
 	"github.com/ebitengine/purego"
 )
 
@@ -57,7 +57,7 @@ func initVorbisFile() error {
 			filename = "libvorbisfile.dylib"
 		}
 
-		lib, err := shared.Load(filename)
+		lib, err := loader.Load(filename)
 		if err != nil {
 			vorbisfileInitErr = fmt.Errorf("failed to load vorbisfile library (%s): %w", filename, err)
 			return

@@ -21,7 +21,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dlcuy22/OngoPlayer/internal/shared"
+	"github.com/dlcuy22/OngoPlayer/Audioengine/loader"
 	"github.com/ebitengine/purego"
 )
 
@@ -56,7 +56,7 @@ func initMpg123File() error {
 			filename = "libmpg123.dylib"
 		}
 
-		lib, err := shared.Load(filename)
+		lib, err := loader.Load(filename)
 		if err != nil {
 			mpg123InitErr = fmt.Errorf("failed to load mpg123 library (%s): %w", filename, err)
 			return

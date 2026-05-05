@@ -7,3 +7,6 @@ internal/ui/gio/reference
 tools/build
 *dll
 build2
+Skills
+.vscode
+.agents
