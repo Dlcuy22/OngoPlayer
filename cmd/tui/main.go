@@ -47,7 +47,12 @@ func main() {
 	}
 	fmt.Printf("Found %d tracks.\n\n", len(queue))
 
-	engine := stelleengine.NewStelleEngine(float32(volume) / 100.0)
+	engine, err := stelleengine.NewStelleEngine(float32(volume) / 100.0)
+	if err != nil {
+		fmt.Println("audio engine init failed:", err)
+		os.Exit(1)
+	}
+	defer engine.Close()
 
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {

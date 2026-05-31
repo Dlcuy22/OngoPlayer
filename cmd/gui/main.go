@@ -34,7 +34,12 @@ func main() {
 		folder = args[0]
 	}
 
-	engine := stelleengine.NewStelleEngine(1.0)
+	engine, err := stelleengine.NewStelleEngine(1.0)
+	if err != nil {
+		fmt.Println("audio engine init failed:", err)
+		os.Exit(1)
+	}
+	defer engine.Close()
 	player := ui.NewPlayer(engine, 25)
 
 	if err := player.LoadFolder(folder); err != nil {

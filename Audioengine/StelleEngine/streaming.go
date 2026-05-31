@@ -175,7 +175,9 @@ Position returns the current playback position in seconds.
 	      float64
 */
 func (s *StreamingAudioSource) Position() float64 {
-	return float64(s.posFrame.Load()) / float64(s.sampleRate)
+	// posFrame is counted in OUTPUT frames (DefaultSampleRate) because the SDL
+	// callback advances it after normalization, not in the file's native rate.
+	return float64(s.posFrame.Load()) / float64(DefaultSampleRate)
 }
 
 /*
@@ -286,7 +288,8 @@ func NewStreamingSource(open openFn, seekTo float64) (*StreamingAudioSource, err
 		stopCh:      make(chan struct{}),
 	}
 	if seekTo > 0 {
-		src.posFrame.Store(int64(seekTo * float64(cd.SampleRate())))
+		// posFrame is in OUTPUT frames (DefaultSampleRate), not native rate.
+		src.posFrame.Store(int64(seekTo * float64(DefaultSampleRate)))
 	}
 
 	go func() {
@@ -301,10 +304,14 @@ func NewStreamingSource(open openFn, seekTo float64) (*StreamingAudioSource, err
 				return
 
 			case req := <-src.seekCh:
-				targetFrame := int64(req.positionSecs * float64(src.sampleRate))
+				// Native frame domain (file rate) for the decoder's own seek.
+				nativeFrame := int64(req.positionSecs * float64(src.sampleRate))
+				// Output frame domain (DefaultSampleRate) for the position counter,
+				// since posFrame is advanced post-normalization by the SDL callback.
+				outputFrame := int64(req.positionSecs * float64(DefaultSampleRate))
 
 				if sd, ok := cd.(SeekableChunkDecoder); ok {
-					_ = sd.SeekToFrame(targetFrame)
+					_ = sd.SeekToFrame(nativeFrame)
 				} else {
 					cd.Close()
 					newCD, err := open(req.positionSecs)
@@ -313,7 +320,7 @@ func NewStreamingSource(open openFn, seekTo float64) (*StreamingAudioSource, err
 					}
 				}
 
-				src.posFrame.Store(targetFrame)
+				src.posFrame.Store(outputFrame)
 				src.done.Store(false)
 				src.ring.Clear()
 				continue
@@ -323,7 +330,17 @@ func NewStreamingSource(open openFn, seekTo float64) (*StreamingAudioSource, err
 
 			n, err := cd.ReadSamples(buf)
 			if n > 0 {
-				if ok := src.ring.Write(buf[:n]); !ok {
+				// Centralized normalization: decoders emit native-rate,
+				// native-channel PCM; we convert to DefaultChannels then
+				// DefaultSampleRate exactly once before buffering.
+				out := buf[:n]
+				if src.channels != DefaultChannels {
+					out = ConvertChannels(out, src.channels, DefaultChannels)
+				}
+				if src.sampleRate != DefaultSampleRate {
+					out = Resample(out, src.sampleRate, DefaultSampleRate, DefaultChannels)
+				}
+				if ok := src.ring.Write(out); !ok {
 					return
 				}
 			}

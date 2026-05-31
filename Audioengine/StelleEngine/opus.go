@@ -56,7 +56,8 @@ func initOpusFile() error {
 
 		lib, err := loader.Load(filename)
 		if err != nil {
-			panic(fmt.Errorf("failed to load opusfile library (%s): %w", filename, err))
+			opusfileInitErr = fmt.Errorf("failed to load opusfile library (%s): %w", filename, err)
+			return
 		}
 
 		purego.RegisterLibFunc(&opOpenFile, lib, "op_open_file")

@@ -140,10 +140,18 @@ func openVorbisChunkDecoder(path string) openFn {
 			return nil, fmt.Errorf("ov_info returned null")
 		}
 
-		// vorbis_info layout: version (int32 @0), channels (int32 @4)
-		// rate (long @8) varies by platform, so we use DefaultSampleRate.
+		// vorbis_info layout: version (int @0), channels (int @4), rate (long @8).
+		// C `long` is 8 bytes on non-Windows 64-bit (LP64) and 4 bytes on
+		// Windows (LLP64) and all 32-bit targets, so read width accordingly.
 		cd.channels = int(*(*int32)(unsafe.Pointer(infoPtr + 4)))
-		cd.sampleRate = DefaultSampleRate
+		if runtime.GOOS != "windows" && unsafe.Sizeof(uintptr(0)) == 8 {
+			cd.sampleRate = int(*(*int64)(unsafe.Pointer(infoPtr + 8)))
+		} else {
+			cd.sampleRate = int(*(*int32)(unsafe.Pointer(infoPtr + 8)))
+		}
+		if cd.sampleRate <= 0 {
+			cd.sampleRate = DefaultSampleRate
+		}
 		cd.totalFrames = ov_pcm_total(&cd.vf, -1)
 
 		if seekTo > 0 {

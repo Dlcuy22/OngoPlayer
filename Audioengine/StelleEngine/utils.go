@@ -98,10 +98,12 @@ ConvertChannels converts audio samples between different channel layouts.
 	      outCh: target channel count
 	returns:
 	      []float32
-	Note: Currently supports Mono (1) to Stereo (2) and Stereo (2) to Mono (1).
+	Note: Handles Mono (1) to Stereo (2), Stereo (2) to Mono (1), and a generic
+	      multichannel (>2) downmix to stereo by averaging odd/even source
+	      channels. Unhandled layouts return the input unchanged.
 */
 func ConvertChannels(in []float32, inCh, outCh int) []float32 {
-	if inCh == outCh || len(in) == 0 {
+	if inCh == outCh || len(in) == 0 || inCh <= 0 || outCh <= 0 {
 		return in
 	}
 
@@ -119,6 +121,38 @@ func ConvertChannels(in []float32, inCh, outCh int) []float32 {
 		out := make([]float32, outFrames)
 		for i := 0; i < outFrames; i++ {
 			out[i] = (in[2*i] + in[2*i+1]) * 0.5
+		}
+		return out
+	}
+
+	// Generic N-channel (N>2) to stereo downmix. Without per-format channel
+	// maps we can't do a true ITU downmix, so we average even-indexed source
+	// channels into Left and odd-indexed into Right; this keeps surround
+	// content audible and centered instead of dropping channels.
+	if inCh > 2 && outCh == 2 {
+		inFrames := len(in) / inCh
+		out := make([]float32, inFrames*2)
+		for f := 0; f < inFrames; f++ {
+			base := f * inCh
+			var left, right float32
+			var ln, rn int
+			for c := 0; c < inCh; c++ {
+				if c%2 == 0 {
+					left += in[base+c]
+					ln++
+				} else {
+					right += in[base+c]
+					rn++
+				}
+			}
+			if ln > 0 {
+				left /= float32(ln)
+			}
+			if rn > 0 {
+				right /= float32(rn)
+			}
+			out[2*f] = left
+			out[2*f+1] = right
 		}
 		return out
 	}
