@@ -37,8 +37,16 @@ type App struct {
 }
 
 func NewApp() *App {
+	// SDL audio init can fail (no audio device, missing libSDL3). A media
+	// player is useless without it, so fail fast and consistent with the
+	// gui/tui entrypoints rather than running with a dead engine.
+	engine, err := stelleengine.NewStelleEngine(1.0)
+	if err != nil {
+		println("audio engine init failed:", err.Error())
+		os.Exit(1)
+	}
 	return &App{
-		engine:  stelleengine.NewStelleEngine(1.0),
+		engine:  engine,
 		current: -1,
 		volume:  100,
 	}
@@ -46,6 +54,10 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	if a.engine == nil {
+		return
+	}
 
 	a.engine.SetOnComplete(func() {
 		runtime.EventsEmit(a.ctx, "track_completed")
@@ -57,7 +69,7 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) broadcastProgress() {
 	ticker := time.NewTicker(200 * time.Millisecond)
 	for range ticker.C {
-		if a.ctx == nil {
+		if a.ctx == nil || a.engine == nil {
 			continue
 		}
 

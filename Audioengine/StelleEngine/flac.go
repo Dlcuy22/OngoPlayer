@@ -287,7 +287,8 @@ func openFlacChunkDecoder(path string) openFn {
 
 /*
 ReadSamples decodes audio from the FLAC stream into the provided buffer.
-Handles resampling if the source rate differs from the engine's output rate.
+Emits native-rate, native-channel PCM; the streaming layer handles channel
+and sample-rate normalization.
 
 	params:
 	      buf: destination buffer for float32 interleaved samples
@@ -296,35 +297,24 @@ Handles resampling if the source rate differs from the engine's output rate.
 	      error: io.EOF or decoding errors
 */
 func (c *FlacChunkDecoder) ReadSamples(buf []float32) (int, error) {
-	// Accumulate raw decoded samples into a temporary slice first,
-	// then resample and copy into buf. This avoids the bug where
-	// Resample returns a new slice that never gets written back.
-	var raw []float32
-	needRaw := len(buf)
-
-	// If resampling is needed (e.g. 96kHz -> 48kHz), we need more
-	// raw samples to produce enough output after downsampling.
-	if c.sampleRate != DefaultSampleRate && c.sampleRate > 0 && DefaultSampleRate > 0 {
-		ratio := float64(c.sampleRate) / float64(DefaultSampleRate)
-		needRaw = int(float64(len(buf))*ratio) + c.channels
-	}
-
-	raw = make([]float32, 0, needRaw)
+	need := len(buf)
+	written := 0
 	var lastErr error
 
-	for len(raw) < needRaw {
+	for written < need {
 		if c.stagePos < c.stageLen {
 			avail := c.stageLen - c.stagePos
-			space := needRaw - len(raw)
+			space := need - written
 			toCopy := avail
 			if space < avail {
 				toCopy = space
 			}
-			raw = append(raw, c.stagingBuf[c.stagePos:c.stagePos+toCopy]...)
+			copy(buf[written:written+toCopy], c.stagingBuf[c.stagePos:c.stagePos+toCopy])
 			c.stagePos += toCopy
+			written += toCopy
 		} else {
-			// Reset staging state before calling process_single
-			// so we can detect if the callback actually produced data
+			// Reset staging state before calling process_single so we can
+			// detect whether the callback actually produced data.
 			c.stageLen = 0
 			c.stagePos = 0
 
@@ -339,18 +329,11 @@ func (c *FlacChunkDecoder) ReadSamples(buf []float32) (int, error) {
 		}
 	}
 
-	if len(raw) == 0 {
+	if written == 0 {
 		return 0, io.EOF
 	}
 
-	// Resample if the file's native rate differs from the engine output rate
-	output := raw
-	if c.sampleRate != DefaultSampleRate && c.sampleRate > 0 && DefaultSampleRate > 0 {
-		output = Resample(raw, c.sampleRate, DefaultSampleRate, c.channels)
-	}
-
-	n := copy(buf, output)
-	return n, lastErr
+	return written, lastErr
 }
 
 /*

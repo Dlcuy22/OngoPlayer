@@ -32,4 +32,5 @@ type Engine interface {
 	GetDuration() float64
 	GetSampleRate() int
 	GetChannels() int
+	Close() error
 }

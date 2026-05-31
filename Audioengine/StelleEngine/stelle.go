@@ -29,26 +29,29 @@ type StelleEngine struct {
 	streamSrc  *StreamingAudioSource
 	onComplete func()
 	stopCh     chan struct{}
+	closed     bool
 }
 
 /*
-NewStelleEngine creates a new Stelle engine instance.
+NewStelleEngine creates a new Stelle engine instance and initializes the SDL
+audio subsystem.
 
 	params:
 	      volume: default volume of the audio engine (0.0 - 1.0)
 	returns:
 	      *StelleEngine
+	      error: if the SDL audio subsystem fails to initialize
 */
-func NewStelleEngine(volume float32) *StelleEngine {
+func NewStelleEngine(volume float32) (*StelleEngine, error) {
 	if !sdl.Init(sdl.InitAudio) {
-		panic(sdl.GetError())
+		return nil, fmt.Errorf("failed to init SDL audio: %s", sdl.GetError())
 	}
 
 	return &StelleEngine{
 		state:  AudioEngine.StateStopped,
 		volume: volume,
 		stopCh: make(chan struct{}),
-	}
+	}, nil
 }
 
 /*
@@ -105,7 +108,9 @@ func audioCallback(userdata unsafe.Pointer, stream *sdl.AudioStream, additionalA
 	n := src.ring.Read(outBuf)
 
 	if n > 0 {
-		src.AdvanceFrames(int64(n / src.channels))
+		// Ring data is normalized to DefaultChannels, so output frames are
+		// n / DefaultChannels regardless of the file's native channel count.
+		src.AdvanceFrames(int64(n / DefaultChannels))
 
 		vol := src.Volume()
 		for i := range outBuf[:n] {
@@ -124,23 +129,32 @@ func audioCallback(userdata unsafe.Pointer, stream *sdl.AudioStream, additionalA
 /*
 monitorCompletion runs in a goroutine to detect when the decoder goroutine
 has finished AND SDL has drained its internal queue, then fires onComplete.
+
+	params:
+	      streamSrc: the source this monitor owns (snapshot, not e.streamSrc)
+	      stream:    the SDL stream this monitor owns (snapshot)
+	      stopCh:    cancellation channel for this specific playback session
+	Note: All session state is passed in by value so the goroutine never reads
+	      mutable engine fields concurrently with Play/Resume/stopInternal.
 */
-func (e *StelleEngine) monitorCompletion() {
+func (e *StelleEngine) monitorCompletion(streamSrc *StreamingAudioSource, stream *sdl.AudioStream, stopCh chan struct{}) {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-e.stopCh:
+		case <-stopCh:
 			return
 		case <-ticker.C:
-			if e.streamSrc == nil {
-				continue
-			}
-			if e.streamSrc.done.Load() && e.streamSrc.ring.Available() == 0 {
-				queued := sdl.GetAudioStreamQueued(e.stream)
-				if queued <= 0 {
+			if streamSrc.done.Load() && streamSrc.ring.Available() == 0 {
+				if sdl.GetAudioStreamQueued(stream) <= 0 {
 					e.mu.Lock()
+					// Only fire if this monitor still owns the active stream;
+					// a newer Play() may have replaced streamSrc since.
+					if e.streamSrc != streamSrc {
+						e.mu.Unlock()
+						return
+					}
 					e.state = AudioEngine.StateStopped
 					callback := e.onComplete
 					e.mu.Unlock()
@@ -202,7 +216,7 @@ func (e *StelleEngine) Play(filePath string, seekTo float64, volume int) error {
 	e.state = AudioEngine.StatePlaying
 
 	e.stopCh = make(chan struct{})
-	go e.monitorCompletion()
+	go e.monitorCompletion(streamSrc, stream, e.stopCh)
 
 	return nil
 }
@@ -222,6 +236,30 @@ func (e *StelleEngine) Stop() error {
 }
 
 /*
+Close tears down any active playback and shuts down the SDL audio subsystem.
+After Close the engine must not be reused.
+
+	returns:
+	      error
+	Note: Pairs with the sdl.Init in NewStelleEngine. Safe to call more than
+	      once; subsequent calls are no-ops.
+*/
+func (e *StelleEngine) Close() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if e.closed {
+		return nil
+	}
+	e.closed = true
+
+	e.stopInternal()
+	e.state = AudioEngine.StateStopped
+	sdl.QuitSubSystem(sdl.InitAudio)
+	return nil
+}
+
+/*
 stopInternal tears down the current playback session.
 Closes the decoder goroutine, destroys the SDL stream, and nils references.
 
@@ -234,8 +272,18 @@ func (e *StelleEngine) stopInternal() {
 		close(e.stopCh)
 	}
 
+	// Destroy the SDL stream BEFORE dropping the Go reference to streamSrc.
+	// The audio callback holds streamSrc as a raw unsafe.Pointer userdata,
+	// which the GC can't see; destroying the stream guarantees SDL stops
+	// calling back, so the object can't be collected mid-callback.
+	if e.stream != nil {
+		sdl.PauseAudioStreamDevice(e.stream)
+		sdl.DestroyAudioStream(e.stream)
+		e.stream = nil
+	}
+
 	if e.streamSrc != nil {
-		// Close ring buffer first to unblock any goroutine stuck in ring.Write()
+		// Close ring buffer to unblock any goroutine stuck in ring.Write().
 		e.streamSrc.ring.Close()
 
 		select {
@@ -244,12 +292,6 @@ func (e *StelleEngine) stopInternal() {
 			close(e.streamSrc.stopCh)
 		}
 		e.streamSrc = nil
-	}
-
-	if e.stream != nil {
-		sdl.PauseAudioStreamDevice(e.stream)
-		sdl.DestroyAudioStream(e.stream)
-		e.stream = nil
 	}
 }
 
@@ -302,9 +344,10 @@ func (e *StelleEngine) Resume(seekTo float64, volume int) error {
 			return fmt.Errorf("failed to resume audio stream: %s", sdl.GetError())
 		}
 		e.state = AudioEngine.StatePlaying
-
-		e.stopCh = make(chan struct{})
-		go e.monitorCompletion()
+		// Do NOT start a new monitorCompletion here: Pause never cancels the
+		// session's stopCh, so the monitor goroutine spawned by Play is still
+		// alive and owns this stream. Spawning another would leak a goroutine
+		// and risk firing onComplete twice.
 	}
 
 	return nil

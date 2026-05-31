@@ -180,8 +180,9 @@ func openMp3ChunkDecoder(path string) openFn {
 }
 
 /*
-ReadSamples decodes 16-bit PCM from the MP3 stream, converts to float32,
-and resamples if the file's native rate differs from DefaultSampleRate.
+ReadSamples decodes 16-bit PCM from the MP3 stream and converts to float32.
+Emits native-rate, native-channel samples; the streaming layer handles
+channel and sample-rate normalization.
 
 	params:
 	      buf: destination buffer for interleaved float32 samples
@@ -209,13 +210,7 @@ func (c *Mp3ChunkDecoder) ReadSamples(buf []float32) (int, error) {
 	}
 
 	converted := ConvertInt16BytesToFloat32(c.buf[:done])
-
-	if c.sampleRate != DefaultSampleRate {
-		converted = Resample(converted, c.sampleRate, DefaultSampleRate, c.channels)
-	}
-
-	copy(buf, converted)
-	return len(converted), nil
+	return copy(buf, converted), nil
 }
 
 /*
