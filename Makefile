@@ -25,8 +25,7 @@ dev-webui:
 	cd cmd/webui && wails dev
 
 dev-windows: 
-	go run cmd/gui/main.go
-
+	go run cmd/gui/main.go --playlist "C:/Users/Hitori/Music/Mix random jpop" --rpc --debug
 
 .PHONY: build build-linux-gui build-webview-gui
 

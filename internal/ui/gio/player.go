@@ -18,10 +18,10 @@ import (
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
-	"os"
+	_ "os"
 	"sync"
 
-	"github.com/dhowden/tag"
+	_ "github.com/dhowden/tag"
 	"github.com/dlcuy22/OngoPlayer/Audioengine/MetaResolver"
 	stelleengine "github.com/dlcuy22/OngoPlayer/Audioengine/StelleEngine"
 	"github.com/dlcuy22/OngoPlayer/internal/shared"

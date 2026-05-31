@@ -214,6 +214,7 @@ func (pb *PlayerBar) Layout(gtx layout.Context, th *material.Theme) layout.Dimen
 			}),
 
 			// Audio details text
+			// FOOTER
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return layout.Inset{Top: 2}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {

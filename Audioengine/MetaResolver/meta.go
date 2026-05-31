@@ -123,6 +123,9 @@ IsSupportedExt checks if a file extension is a supported audio format.
 	      ext: file extension including the dot (e.g. ".mp3")
 	returns:
 	      bool
+
+TODO:
+replace hardcoded format resolver with accurate tag
 */
 func IsSupportedExt(ext string) bool {
 	return supportedExts[strings.ToLower(ext)]
