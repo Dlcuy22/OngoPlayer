@@ -117,8 +117,12 @@ func audioCallback(userdata unsafe.Pointer, stream *sdl.AudioStream, additionalA
 		src.AdvanceFrames(int64(n / DefaultChannels))
 
 		vol := src.Volume()
-		for i := range outBuf[:n] {
-			outBuf[i] *= vol
+		if apply_gain_c != nil {
+			apply_gain_c(uintptr(unsafe.Pointer(&outBuf[0])), int32(n), vol)
+		} else {
+			for i := range outBuf[:n] {
+				outBuf[i] *= vol
+			}
 		}
 	}
 

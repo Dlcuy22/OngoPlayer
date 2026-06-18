@@ -27,9 +27,17 @@ dev-webui:
 dev-windows: 
 	go run cmd/gui/main.go --playlist "C:/Users/Hitori/Music/Mix random jpop" --rpc --debug
 
-.PHONY: build build-linux-gui build-webview-gui
+.PHONY: build build-linux-gui build-webview-gui build-dsp-linux build-dsp-windows
 
-build: build-linux-gui
+build-dsp-linux:
+	mkdir -p $(BUILD_DIR)
+	$(CC) -O3 -shared -fPIC -ffast-math -o $(BUILD_DIR)/stelle_dsp.so Audioengine/StelleEngine/dsp/stelle_dsp.c
+
+build-dsp-windows:
+	mkdir -p build/win
+	gcc -O3 -shared -ffast-math -o build/win/stelle_dsp.dll Audioengine/StelleEngine/dsp/stelle_dsp.c
+
+build: build-dsp-linux build-linux-gui
 
 build-linux-gui:
 	GOOS=linux GOARCH=amd64 go build $(WAYVULKAN_TAGS) \
@@ -37,7 +45,7 @@ build-linux-gui:
 
 .PHONY: build-windows build-windows-gui build-webview-gui
 
-build-windows: build-windows-gui build-webview-gui
+build-windows: build-dsp-windows build-windows-gui build-webview-gui
 
 build-windows-gui:
 	GOOS=windows GOARCH=amd64 go build \
