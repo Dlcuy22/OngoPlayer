@@ -160,6 +160,7 @@ type StreamingAudioSource struct {
 
 	posFrame atomic.Int64
 	done     atomic.Bool
+	underruns atomic.Int64
 
 	volume float32
 	volMu  sync.Mutex

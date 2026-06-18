@@ -107,6 +107,10 @@ func audioCallback(userdata unsafe.Pointer, stream *sdl.AudioStream, additionalA
 
 	n := src.ring.Read(outBuf)
 
+	if n < nSamples && !src.done.Load() {
+		src.underruns.Add(1)
+	}
+
 	if n > 0 {
 		// Ring data is normalized to DefaultChannels, so output frames are
 		// n / DefaultChannels regardless of the file's native channel count.
@@ -483,3 +487,16 @@ func (e *StelleEngine) GetChannels() int {
 	}
 	return DefaultChannels
 }
+
+/*
+GetUnderruns returns the total number of audio underruns detected on the active stream source.
+*/
+func (e *StelleEngine) GetUnderruns() int64 {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.streamSrc == nil {
+		return 0
+	}
+	return e.streamSrc.underruns.Load()
+}
+

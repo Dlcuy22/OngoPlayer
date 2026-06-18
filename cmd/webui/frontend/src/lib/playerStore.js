@@ -2,27 +2,24 @@
 // for the OngoPlayer WebUI. It decouples the UI from the audio engine IPC.
 //
 // Key Functions:
-//   - initPlayerSync(): Binds Wails events to Svelte stores
-//   - playerSeekEnd(): Handles robust seek synchronization
-//   - playerToggle(): Toggles play/pause state
+//   - initPlayerSync(): binds Wails events to Svelte stores
+//   - playerSeekEnd(): handles robust seek synchronization
+//   - playerToggle(): toggles play/pause state
+//   - getCover(): lazy per-track cover fetch with in-memory cache
+//   - cycleLoop()/toggleShuffle(): playback mode controls
 //
 // Dependencies:
-//   - svelte/store: Provides reactive state variables
+//   - svelte/store: reactive state variables
 //   - wailsjs/go/main/App.js: IPC bindings to the Go backend
 //   - wailsjs/runtime/runtime.js: Wails event listener API
-//
-// Error Types:
-//   - Backend sync failures are handled silently by reverting to known state.
-//
-// Example:
-//   import { position, playerToggle } from './playerStore.js';
-//   playerToggle($isPlaying);
 
-import { writable } from 'svelte/store';
+import { writable, get } from "svelte/store";
 import {
   PlayFile, PlayTrack, Pause, Resume, Seek,
   SetVolume, GetVolume, Next, Prev,
-  PickFolder, GetCurrentTrack
+  PickFolder, PickFolderAppend, GetCurrentTrack, GetCover,
+  SetShuffle, GetShuffle, SetLoopMode, GetLoopMode,
+  SetRPCEnabled, GetRPCEnabled,
 } from "../../wailsjs/go/main/App.js";
 import { EventsOn } from "../../wailsjs/runtime/runtime.js";
 
@@ -32,22 +29,59 @@ export const isPlaying = writable(false);
 export const volume = writable(30);
 export const currentTrack = writable(null);
 export const queue = writable([]);
+export const shuffle = writable(false);
+export const loopMode = writable(0); // 0 off, 1 all, 2 one
+export const coverUrl = writable(""); // cover for the active track ("" = none)
+export const lyrics = writable([]); // [{ time, text }] for the active track
+
+// Settings UI state and persisted preferences.
+export const showSettings = writable(false);
+export const rpcEnabled = writable(false);
+
+const FONT_KEY = "ongo.lyricsFontSize";
+const FONT_MIN = 12;
+const FONT_MAX = 32;
+const FONT_DEFAULT = 16;
+
+const ANIM_KEY = "ongo.animationsEnabled";
+
+function loadFontSize() {
+  const raw = parseInt(
+    typeof localStorage !== "undefined" ? localStorage.getItem(FONT_KEY) : "",
+    10
+  );
+  if (isNaN(raw)) return FONT_DEFAULT;
+  return Math.min(FONT_MAX, Math.max(FONT_MIN, raw));
+}
+
+function loadAnimations() {
+  if (typeof localStorage === "undefined") return true;
+  const raw = localStorage.getItem(ANIM_KEY);
+  return raw === null ? true : raw === "1"; // default on
+}
+
+export const lyricsFontSize = writable(loadFontSize()); // px
+export const animationsEnabled = writable(loadAnimations());
 
 let isSeeking = false;
 let expectedPosition = -1;
 
-/*
-initPlayerSync initializes the Wails event listeners and synchronizes the frontend Svelte stores with the Go backend's audio engine state.
+// In-memory cover cache keyed by queue index. Value is a data URL or "" (known
+// to have no art). Avoids re-extracting covers on every selection.
+const coverCache = new Map();
 
-	params:
-	      none
-	returns:
-	      void
-	Note:
-	      Implements "Target Convergence" to prevent progress bar rubber-banding during far seeks.
+/*
+initPlayerSync initializes the Wails event listeners and synchronizes the
+frontend Svelte stores with the Go backend's audio engine state.
+
+	Note: implements "Target Convergence" to prevent progress bar rubber-banding
+	during far seeks.
 */
 export function initPlayerSync() {
-  GetVolume().then(v => volume.set(v));
+  GetVolume().then((v) => volume.set(v));
+  GetShuffle().then((s) => shuffle.set(s));
+  GetLoopMode().then((m) => loopMode.set(m));
+  GetRPCEnabled().then((on) => rpcEnabled.set(on));
 
   EventsOn("playback_progress", (data) => {
     duration.set(data.duration);
@@ -61,7 +95,6 @@ export function initPlayerSync() {
         expectedPosition = -1;
       }
     }
-
     position.set(data.position);
   });
 
@@ -75,17 +108,73 @@ export function initPlayerSync() {
       currentTrack.set(track);
       isPlaying.set(true);
       position.set(0);
+      lyrics.set([]); // clear stale lyrics until the new ones arrive
+      loadCoverFor(track);
+    }
+  });
+
+  EventsOn("lyrics_loaded", (data) => {
+    if (!data) return;
+    // Ignore results for a track that is no longer active (late API responses).
+    const cur = get(currentTrack);
+    if (cur && cur.index !== data.index) return;
+    lyrics.set(Array.isArray(data.lines) ? data.lines : []);
+  });
+}
+
+/*
+loadCoverFor resolves the cover for a track and publishes it to coverUrl,
+using the cache to avoid repeat backend calls.
+
+	params:
+	      track: TrackInfo (must carry index and hasCover)
+*/
+function loadCoverFor(track) {
+  if (!track || !track.hasCover) {
+    coverUrl.set("");
+    return;
+  }
+  const idx = track.index;
+  if (coverCache.has(idx)) {
+    coverUrl.set(coverCache.get(idx));
+    return;
+  }
+  // Clear stale art while the new one loads.
+  coverUrl.set("");
+  GetCover(idx).then((url) => {
+    coverCache.set(idx, url || "");
+    // Only apply if this track is still the active one.
+    const cur = get(currentTrack);
+    if (cur && cur.index === idx) {
+      coverUrl.set(url || "");
     }
   });
 }
 
 /*
-playerToggle pauses or resumes the audio playback based on the current state.
+getCover returns a Promise<string> data URL for a queue index, caching results.
+Used by the tracklist for mini thumbnails.
 
 	params:
-	      currentlyPlaying: boolean indicating if audio is currently playing
+	      index:    queue index
+	      hasCover: skip the backend call when the track has no embedded art
 	returns:
-	      void
+	      Promise<string>
+*/
+export function getCover(index, hasCover) {
+  if (!hasCover) return Promise.resolve("");
+  if (coverCache.has(index)) return Promise.resolve(coverCache.get(index));
+  return GetCover(index).then((url) => {
+    coverCache.set(index, url || "");
+    return url || "";
+  });
+}
+
+/*
+playerToggle pauses or resumes audio playback based on the current state.
+
+	params:
+	      currentlyPlaying: whether audio is currently playing
 */
 export function playerToggle(currentlyPlaying) {
   if (currentlyPlaying) {
@@ -95,44 +184,26 @@ export function playerToggle(currentlyPlaying) {
   }
 }
 
-/*
-playerSeekStart locks the progress bar from receiving backend updates during a user drag interaction.
-
-	params:
-	      none
-	returns:
-	      void
-*/
+// playerSeekStart locks the progress bar from backend updates during a drag.
 export function playerSeekStart() {
   isSeeking = true;
 }
 
-/*
-playerSeekInput updates the local position store during a seek drag for smooth UI scrubbing without triggering IPC calls.
-
-	params:
-	      val: the new position in seconds
-	returns:
-	      void
-*/
+// playerSeekInput updates the local position during a drag, no IPC.
 export function playerSeekInput(val) {
   position.set(val);
 }
 
 /*
-playerSeekEnd sends the seek command to the backend and locks the UI state until the backend confirms the new position.
+playerSeekEnd commits the seek and locks UI state until the backend confirms.
 
 	params:
-	      seekTo: the target position in seconds
-	returns:
-	      void
-	Note:
-	      Uses expectedPosition to ignore stale backend events.
+	      seekTo: target position in seconds
+	Note: uses expectedPosition to ignore stale backend events.
 */
 export function playerSeekEnd(seekTo) {
   isSeeking = true;
   expectedPosition = seekTo;
-
   Seek(seekTo)
     .then(() => {
       position.set(seekTo);
@@ -144,64 +215,108 @@ export function playerSeekEnd(seekTo) {
     });
 }
 
-/*
-playerVolumeChange updates the local volume store and sends the command to the backend.
-
-	params:
-	      val: volume level (0-100)
-	returns:
-	      void
-*/
+// playerVolumeChange updates local volume and pushes it to the backend.
 export function playerVolumeChange(val) {
   volume.set(val);
   SetVolume(val);
 }
 
-/*
-playerNext requests the backend to play the next track in the queue.
-
-	params:
-	      none
-	returns:
-	      void
-*/
+// playerNext / playerPrev request track navigation.
 export function playerNext() { Next(); }
-
-/*
-playerPrev requests the backend to play the previous track in the queue.
-
-	params:
-	      none
-	returns:
-	      void
-*/
 export function playerPrev() { Prev(); }
 
+// toggleShuffle flips shuffle state in the backend and store.
+export function toggleShuffle() {
+  const next = !get(shuffle);
+  shuffle.set(next);
+  SetShuffle(next);
+}
+
+// cycleLoop advances loop mode 0 -> 1 -> 2 -> 0 in the backend and store.
+export function cycleLoop() {
+  const next = (get(loopMode) + 1) % 3;
+  loopMode.set(next);
+  SetLoopMode(next);
+}
+
+// openSettings / closeSettings toggle the settings panel.
+export function openSettings() { showSettings.set(true); }
+export function closeSettings() { showSettings.set(false); }
+
+// setRpcEnabled flips Discord Rich Presence in the backend and store.
+export function setRpcEnabled(on) {
+  rpcEnabled.set(on);
+  SetRPCEnabled(on);
+}
+
 /*
-playerPickFolder opens a native OS directory picker dialog and loads the resulting tracks into the queue.
+setLyricsFontSize clamps and persists the lyrics font size preference.
 
 	params:
-	      none
-	returns:
-	      void
+	      px: requested font size in pixels
+*/
+export function setLyricsFontSize(px) {
+  const v = Math.min(FONT_MAX, Math.max(FONT_MIN, parseInt(px, 10) || FONT_DEFAULT));
+  lyricsFontSize.set(v);
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem(FONT_KEY, String(v));
+  }
+}
+
+/*
+setAnimationsEnabled toggles UI micro-animations and persists the preference.
+
+	params:
+	      on: whether animations are enabled
+*/
+export function setAnimationsEnabled(on) {
+  animationsEnabled.set(on);
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem(ANIM_KEY, on ? "1" : "0");
+  }
+}
+
+/*
+playerSeekTo seeks to an absolute position (used by lyric click-to-seek).
+Reuses the convergence logic so the progress bar does not rubber-band.
+
+	params:
+	      seconds: target position in seconds
+*/
+export function playerSeekTo(seconds) {
+  playerSeekEnd(seconds);
+}
+
+// resetCovers clears the cover cache; called when the queue is rebuilt.
+function resetCovers() {
+  coverCache.clear();
+}
+
+/*
+playerPickFolder opens a native picker and REPLACES the queue.
 */
 export function playerPickFolder() {
   PickFolder().then((tracks) => {
-    if (tracks && tracks.length > 0) {
-      queue.set(tracks);
-    }
+    resetCovers();
+    queue.set(tracks || []);
   });
 }
 
 /*
-playerPlayQueueIndex plays a specific track from the current queue based on its index.
+playerAppendFolder opens a native picker and APPENDS to the queue.
+*/
+export function playerAppendFolder() {
+  PickFolderAppend().then((tracks) => {
+    queue.set(tracks || []);
+  });
+}
+
+/*
+playerPlayQueueIndex plays a specific track from the current queue.
 
 	params:
-	      index: the array index of the track in the queue
-	returns:
-	      void
+	      index: array index of the track in the queue
 */
 export function playerPlayQueueIndex(index) {
   PlayTrack(index).then(() => isPlaying.set(true));
 }
-

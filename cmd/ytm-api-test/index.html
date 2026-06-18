@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ytm-go API Tester</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --bg-color: #121214;
+            --surface-color: #1c1c1f;
+            --surface-hover: #26262b;
+            --border-color: #2e2e33;
+            --text-color: #f3f3f5;
+            --text-secondary: #9ea0a6;
+            --accent-color: #ffffff;
+            --accent-bg: #2e2e33;
+            --accent-hover: #e4e4e7;
+            --font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-family);
+            font-size: 14px;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+
+
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 200px;
+            border-right: 1px solid var(--border-color);
+            background-color: var(--surface-color);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            padding: 10px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: left;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: background-color 0.2s, color 0.2s;
+            width: 100%;
+        }
+
+        .tab-btn:hover {
+            background-color: var(--surface-hover);
+            color: var(--text-color);
+        }
+
+        .tab-btn.active {
+            background-color: var(--accent-bg);
+            color: var(--text-color);
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .tab-panel {
+            display: none;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .tab-panel.active {
+            display: flex;
+        }
+
+        .panel-header {
+            margin-bottom: 8px;
+        }
+
+        .panel-header h2 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .panel-header p {
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .search-container {
+            position: relative;
+            display: flex;
+            gap: 12px;
+            max-width: 600px;
+        }
+
+        .input-wrapper {
+            flex: 1;
+            position: relative;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px 14px;
+            color: var(--text-color);
+            font-family: var(--font-family);
+            font-size: 14px;
+            outline: none;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--accent-hover);
+        }
+
+        .btn {
+            background-color: var(--accent-color);
+            color: #000000;
+            border: none;
+            border-radius: 6px;
+            padding: 10px 20px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            background-color: var(--accent-hover);
+        }
+
+        .btn-secondary {
+            background-color: var(--surface-color);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--surface-hover);
+        }
+
+        .suggestions-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            margin-top: 4px;
+            z-index: 10;
+            max-height: 250px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .suggestion-item {
+            padding: 10px 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+        }
+
+        .suggestion-item:hover {
+            background-color: var(--surface-hover);
+            color: var(--text-color);
+        }
+
+        .split-view {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 24px;
+            align-items: start;
+        }
+
+        @media (max-width: 1024px) {
+            .split-view {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .json-viewer {
+            background-color: #0b0b0c;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            font-family: monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            max-height: 500px;
+            white-space: pre-wrap;
+            color: #d4d4d8;
+        }
+
+        .category-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .category-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 6px;
+            text-transform: uppercase;
+        }
+
+        .item-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .media-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+        }
+
+        .media-row:hover {
+            background-color: var(--surface-hover);
+        }
+
+        .media-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .media-img {
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
+            background-color: var(--border-color);
+            object-fit: cover;
+        }
+
+        .media-details {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .media-name {
+            font-weight: 500;
+            color: var(--text-color);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .media-sub {
+            font-size: 12px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .media-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .badge-explicit {
+            background-color: #3f3f46;
+            color: #d4d4d8;
+            font-size: 9px;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-weight: 700;
+        }
+
+        .lyrics-box {
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 24px;
+            white-space: pre-wrap;
+            line-height: 1.8;
+            font-size: 15px;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+
+    <div class="container">
+        <aside class="sidebar">
+            <button class="tab-btn active" onclick="switchTab('search')">
+                <i data-lucide="search" style="width: 16px; height: 16px;"></i>
+                Search & Suggest
+            </button>
+            <button class="tab-btn" onclick="switchTab('artist')">
+                <i data-lucide="user" style="width: 16px; height: 16px;"></i>
+                Artist Details
+            </button>
+            <button class="tab-btn" onclick="switchTab('playlist')">
+                <i data-lucide="play-circle" style="width: 16px; height: 16px;"></i>
+                Playlist / Album
+            </button>
+            <button class="tab-btn" onclick="switchTab('lyrics')">
+                <i data-lucide="align-left" style="width: 16px; height: 16px;"></i>
+                Track Lyrics
+            </button>
+        </aside>
+
+        <main class="main-content">
+            <!-- SEARCH TAB -->
+            <section id="search-panel" class="tab-panel active">
+                <div class="panel-header">
+                    <h2>Search YouTube Music</h2>
+                </div>
+
+                <div class="search-container">
+                    <div class="input-wrapper">
+                        <input type="text" id="search-input" placeholder="Type a song, artist, or album..." autocomplete="off">
+                        <div class="suggestions-dropdown" id="suggestions-box"></div>
+                    </div>
+                    <button class="btn" onclick="performSearch()">
+                        <i data-lucide="search" style="width: 16px; height: 16px;"></i>
+                        Search
+                    </button>
+                </div>
+
+                <div class="split-view">
+                    <div class="results-section">
+                        <div id="search-results-list" class="item-list"></div>
+                    </div>
+                    <div class="category-group">
+                        <h3>Raw JSON</h3>
+                        <pre class="json-viewer" id="search-raw">{}</pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ARTIST TAB -->
+            <section id="artist-panel" class="tab-panel">
+                <div class="panel-header">
+                    <h2>Artist Profile</h2>
+                </div>
+
+                <div class="search-container">
+                    <input type="text" id="artist-id-input" placeholder="Enter Artist Browse ID">
+                    <button class="btn" onclick="loadArtist()">Load</button>
+                </div>
+
+                <div class="split-view">
+                    <div class="results-section">
+                        <div id="artist-profile-info" class="card" style="display: none;">
+                            <div style="display: flex; gap: 16px; align-items: center;">
+                                <img id="artist-img" class="media-img" style="width: 80px; height: 80px; border-radius: 50%;" src="">
+                                <div>
+                                    <h3 id="artist-name" style="font-size: 22px; font-weight: 600;"></h3>
+                                    <p id="artist-subs" style="color: var(--text-secondary);"></p>
+                                </div>
+                            </div>
+                            <div id="artist-desc" style="color: var(--text-secondary); font-size: 13px; line-height: 1.6;"></div>
+                            <div class="category-group">
+                                <span class="category-title">Shelves</span>
+                                <div id="artist-shelves" class="item-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="category-group">
+                        <h3>Raw JSON</h3>
+                        <pre class="json-viewer" id="artist-raw">{}</pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PLAYLIST TAB -->
+            <section id="playlist-panel" class="tab-panel">
+                <div class="panel-header">
+                    <h2>Playlist / Album</h2>
+                </div>
+
+                <div class="search-container">
+                    <input type="text" id="playlist-id-input" placeholder="Enter Playlist/Album ID">
+                    <button class="btn" onclick="loadPlaylist()">Load</button>
+                </div>
+
+                <div class="split-view">
+                    <div class="results-section">
+                        <div id="playlist-detail-info" class="card" style="display: none;">
+                            <div style="display: flex; gap: 16px; align-items: center;">
+                                <img id="playlist-img" class="media-img" style="width: 80px; height: 80px;" src="">
+                                <div>
+                                    <h3 id="playlist-name" style="font-size: 20px; font-weight: 600;"></h3>
+                                    <p id="playlist-meta" style="color: var(--text-secondary);"></p>
+                                </div>
+                            </div>
+                            <div id="playlist-desc" style="color: var(--text-secondary); font-size: 13px;"></div>
+                            <div class="category-group">
+                                <span class="category-title">Tracks</span>
+                                <div id="playlist-tracks" class="item-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="category-group">
+                        <h3>Raw JSON</h3>
+                        <pre class="json-viewer" id="playlist-raw">{}</pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- LYRICS TAB -->
+            <section id="lyrics-panel" class="tab-panel">
+                <div class="panel-header">
+                    <h2>Track Lyrics</h2>
+                </div>
+
+                <div class="search-container">
+                    <input type="text" id="lyrics-id-input" placeholder="Enter Lyrics Browse ID">
+                    <button class="btn" onclick="loadLyrics()">Get Lyrics</button>
+                </div>
+
+                <div class="split-view">
+                    <div class="lyrics-box" id="lyrics-content">No lyrics loaded yet.</div>
+                    <div class="category-group">
+                        <h3>Raw JSON</h3>
+                        <pre class="json-viewer" id="lyrics-raw">{}</pre>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
+            const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(btn => btn.getAttribute('onclick').includes(tabId));
+            if (activeBtn) activeBtn.classList.add('active');
+            const activePanel = document.getElementById(`${tabId}-panel`);
+            if (activePanel) activePanel.classList.add('active');
+        }
+
+        const searchInput = document.getElementById('search-input');
+        const suggestionsBox = document.getElementById('suggestions-box');
+
+        searchInput.addEventListener('input', async (e) => {
+            const val = e.target.value.trim();
+            if (val.length < 2) {
+                suggestionsBox.style.display = 'none';
+                return;
+            }
+            try {
+                const res = await fetch(`/api/suggest?q=${encodeURIComponent(val)}`);
+                if (!res.ok) return;
+                const data = await res.json();
+
+                if (data && data.length > 0) {
+                    suggestionsBox.innerHTML = '';
+                    data.forEach(item => {
+                        const queryText = typeof item === 'object' && item.query ? item.query : item;
+                        const div = document.createElement('div');
+                        div.className = 'suggestion-item';
+                        div.innerHTML = `<i data-lucide="corner-down-right" style="width: 14px; height: 14px;"></i> <span>${queryText}</span>`;
+                        div.addEventListener('click', () => {
+                            searchInput.value = queryText;
+                            suggestionsBox.style.display = 'none';
+                            performSearch();
+                        });
+                        suggestionsBox.appendChild(div);
+                    });
+                    lucide.createIcons({ props: { class: 'lucide-icon' }, node: suggestionsBox });
+                    suggestionsBox.style.display = 'block';
+                } else {
+                    suggestionsBox.style.display = 'none';
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!searchInput.contains(e.target) && !suggestionsBox.contains(e.target)) {
+                suggestionsBox.style.display = 'none';
+            }
+        });
+
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                suggestionsBox.style.display = 'none';
+                performSearch();
+            }
+        });
+
+        function formatImgUrl(provider) {
+            if (!provider) return '';
+            return provider.url_a ? (provider.url_b ? provider.url_a + "180-h180" + provider.url_b : provider.url_a) : '';
+        }
+
+        async function performSearch() {
+            const query = searchInput.value.trim();
+            if (!query) return;
+
+            const listContainer = document.getElementById('search-results-list');
+            listContainer.innerHTML = '<p style="color: var(--text-secondary);">Searching...</p>';
+            document.getElementById('search-raw').textContent = 'Loading...';
+
+            try {
+                const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                document.getElementById('search-raw').textContent = JSON.stringify(data, null, 4);
+
+                if (res.ok && data.categories && data.categories.length > 0) {
+                    listContainer.innerHTML = '';
+                    data.categories.forEach(cat => {
+                        if (!cat.layout || !cat.layout.items || cat.layout.items.length === 0) return;
+
+                        const catDiv = document.createElement('div');
+                        catDiv.className = 'category-group';
+                        const title = document.createElement('span');
+                        title.className = 'category-title';
+                        title.textContent = cat.layout.title || 'General';
+                        catDiv.appendChild(title);
+
+                        const itemsDiv = document.createElement('div');
+                        itemsDiv.className = 'item-list';
+
+                        cat.layout.items.forEach(item => {
+                            const row = document.createElement('div');
+                            row.className = 'media-row';
+
+                            const left = document.createElement('div');
+                            left.className = 'media-left';
+
+                            const img = document.createElement('img');
+                            img.className = 'media-img';
+                            img.src = formatImgUrl(item.thumbnail) || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="gray" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+                            left.appendChild(img);
+
+                            const details = document.createElement('div');
+                            details.className = 'media-details';
+
+                            const name = document.createElement('span');
+                            name.className = 'media-name';
+                            name.textContent = item.name || item.id;
+                            details.appendChild(name);
+
+                            const sub = document.createElement('span');
+                            sub.className = 'media-sub';
+
+                            let subtitleText = '';
+                            let type = 'Item';
+
+                            if (item.artists && Array.isArray(item.artists)) {
+                                type = 'Song';
+                                subtitleText = item.artists.map(a => a.name).join(', ');
+                                if (item.duration_ms) {
+                                    const mins = Math.floor(item.duration_ms / 60000);
+                                    const secs = Math.floor((item.duration_ms % 60000) / 1000).toString().padStart(2, '0');
+                                    subtitleText += ` • ${mins}:${secs}`;
+                                }
+                            } else if (item.subscriber_count !== undefined) {
+                                type = 'Artist';
+                                subtitleText = `Artist • ${item.subscriber_count.toLocaleString()} subscribers`;
+                            } else if (item.item_count !== undefined || item.total_duration_ms !== undefined) {
+                                type = 'Playlist';
+                                subtitleText = `Playlist • ${item.item_count} tracks`;
+                            }
+
+                            sub.textContent = subtitleText;
+                            details.appendChild(sub);
+                            left.appendChild(details);
+                            row.appendChild(left);
+
+                            const actions = document.createElement('div');
+                            actions.className = 'media-actions';
+
+                            if (item.is_explicit) {
+                                const exp = document.createElement('span');
+                                exp.className = 'badge-explicit';
+                                exp.textContent = 'E';
+                                actions.appendChild(exp);
+                            }
+
+                            if (type === 'Song' && item.lyrics_browse_id) {
+                                const lyrBtn = document.createElement('button');
+                                lyrBtn.className = 'btn btn-secondary';
+                                lyrBtn.style.padding = '4px 8px';
+                                lyrBtn.style.fontSize = '12px';
+                                lyrBtn.innerHTML = '<i data-lucide="align-left" style="width: 12px; height: 12px;"></i> Lyrics';
+                                lyrBtn.onclick = (e) => {
+                                    e.stopPropagation();
+                                    document.getElementById('lyrics-id-input').value = item.lyrics_browse_id;
+                                    switchTab('lyrics');
+                                    loadLyrics();
+                                };
+                                actions.appendChild(lyrBtn);
+                            }
+
+                            if (type === 'Artist') {
+                                const artBtn = document.createElement('button');
+                                artBtn.className = 'btn btn-secondary';
+                                artBtn.style.padding = '4px 8px';
+                                artBtn.style.fontSize = '12px';
+                                artBtn.innerHTML = '<i data-lucide="user" style="width: 12px; height: 12px;"></i> Load';
+                                artBtn.onclick = (e) => {
+                                    e.stopPropagation();
+                                    document.getElementById('artist-id-input').value = item.id;
+                                    switchTab('artist');
+                                    loadArtist();
+                                };
+                                actions.appendChild(artBtn);
+                            } else if (type === 'Playlist') {
+                                const plBtn = document.createElement('button');
+                                plBtn.className = 'btn btn-secondary';
+                                plBtn.style.padding = '4px 8px';
+                                plBtn.style.fontSize = '12px';
+                                plBtn.innerHTML = '<i data-lucide="play-circle" style="width: 12px; height: 12px;"></i> Load';
+                                plBtn.onclick = (e) => {
+                                    e.stopPropagation();
+                                    document.getElementById('playlist-id-input').value = item.id;
+                                    switchTab('playlist');
+                                    loadPlaylist();
+                                };
+                                actions.appendChild(plBtn);
+                            }
+
+                            row.appendChild(actions);
+                            itemsDiv.appendChild(row);
+                        });
+
+                        catDiv.appendChild(itemsDiv);
+                        listContainer.appendChild(catDiv);
+                    });
+                    lucide.createIcons({ props: { class: 'lucide-icon' }, node: listContainer });
+                } else {
+                    listContainer.innerHTML = '<p style="color: var(--text-secondary);">No results found.</p>';
+                }
+            } catch (err) {
+                listContainer.innerHTML = `<p style="color: #ef4444;">Error: ${err.message}</p>`;
+                document.getElementById('search-raw').textContent = err.toString();
+            }
+        }
+
+        async function loadArtist() {
+            const id = document.getElementById('artist-id-input').value.trim();
+            if (!id) return;
+
+            const profileInfo = document.getElementById('artist-profile-info');
+            document.getElementById('artist-raw').textContent = 'Loading...';
+
+            try {
+                const res = await fetch(`/api/artist?id=${encodeURIComponent(id)}`);
+                const data = await res.json();
+                document.getElementById('artist-raw').textContent = JSON.stringify(data, null, 4);
+
+                if (res.ok && data) {
+                    profileInfo.style.display = 'flex';
+                    document.getElementById('artist-name').textContent = data.name || 'Unknown Artist';
+                    document.getElementById('artist-subs').textContent = data.subscriber_count ? `${data.subscriber_count.toLocaleString()} subscribers` : '';
+                    document.getElementById('artist-desc').textContent = data.description || '';
+                    document.getElementById('artist-img').src = formatImgUrl(data.thumbnail) || '';
+
+                    const shelvesList = document.getElementById('artist-shelves');
+                    shelvesList.innerHTML = '';
+
+                    if (data.layouts && data.layouts.length > 0) {
+                        data.layouts.forEach(layout => {
+                            if (!layout.items || layout.items.length === 0) return;
+
+                            const shelfHeader = document.createElement('div');
+                            shelfHeader.className = 'category-title';
+                            shelfHeader.style.marginTop = '16px';
+                            shelfHeader.textContent = layout.title || 'Layout';
+                            shelvesList.appendChild(shelfHeader);
+
+                            layout.items.forEach(item => {
+                                const row = document.createElement('div');
+                                row.className = 'media-row';
+                                row.innerHTML = `
+                                    <div class="media-left">
+                                        <img class="media-img" src="${formatImgUrl(item.thumbnail) || ''}">
+                                        <div class="media-details">
+                                            <span class="media-name">${item.name || item.id}</span>
+                                            <span class="media-secondary" style="font-size: 11px; color: var(--text-secondary);">${item.duration_ms ? (Math.floor(item.duration_ms / 60000) + ':' + Math.floor((item.duration_ms % 60000) / 1000).toString().padStart(2, '0')) : ''}</span>
+                                        </div>
+                                    </div>
+                                `;
+                                shelvesList.appendChild(row);
+                            });
+                        });
+                    }
+                }
+            } catch (err) {
+                document.getElementById('artist-raw').textContent = err.toString();
+            }
+        }
+
+        async function loadPlaylist() {
+            const id = document.getElementById('playlist-id-input').value.trim();
+            if (!id) return;
+
+            const detailInfo = document.getElementById('playlist-detail-info');
+            document.getElementById('playlist-raw').textContent = 'Loading...';
+
+            try {
+                const res = await fetch(`/api/playlist?id=${encodeURIComponent(id)}`);
+                const data = await res.json();
+                document.getElementById('playlist-raw').textContent = JSON.stringify(data, null, 4);
+
+                if (res.ok && data) {
+                    detailInfo.style.display = 'flex';
+                    document.getElementById('playlist-name').textContent = data.name || 'Unnamed Playlist';
+
+                    let metaText = data.type || 'Playlist';
+                    if (data.artists && data.artists.length > 0) metaText += ` • By ${data.artists.map(a => a.name).join(', ')}`;
+                    if (data.item_count) metaText += ` • ${data.item_count} tracks`;
+                    document.getElementById('playlist-meta').textContent = metaText;
+                    document.getElementById('playlist-desc').textContent = data.description || '';
+                    document.getElementById('playlist-img').src = formatImgUrl(data.thumbnail) || '';
+
+                    const tracksList = document.getElementById('playlist-tracks');
+                    tracksList.innerHTML = '';
+
+                    if (data.items && data.items.length > 0) {
+                        data.items.forEach((item, index) => {
+                            const row = document.createElement('div');
+                            row.className = 'media-row';
+
+                            const left = document.createElement('div');
+                            left.className = 'media-left';
+
+                            const idx = document.createElement('span');
+                            idx.style.width = '24px';
+                            idx.style.color = 'var(--text-secondary)';
+                            idx.style.fontWeight = '600';
+                            idx.textContent = index + 1;
+                            left.appendChild(idx);
+
+                            const details = document.createElement('div');
+                            details.className = 'media-details';
+
+                            const name = document.createElement('span');
+                            name.className = 'media-name';
+                            name.textContent = item.name || item.id;
+                            details.appendChild(name);
+
+                            const sub = document.createElement('span');
+                            sub.className = 'media-sub';
+
+                            let subtitle = item.artists ? item.artists.map(a => a.name).join(', ') : 'Unknown Artist';
+                            if (item.duration_ms) {
+                                const mins = Math.floor(item.duration_ms / 60000);
+                                const secs = Math.floor((item.duration_ms % 60000) / 1000).toString().padStart(2, '0');
+                                subtitle += ` • ${mins}:${secs}`;
+                            }
+                            sub.textContent = subtitle;
+                            details.appendChild(sub);
+                            left.appendChild(details);
+                            row.appendChild(left);
+
+                            const actions = document.createElement('div');
+                            actions.className = 'media-actions';
+
+                            if (item.lyrics_browse_id) {
+                                const lyrBtn = document.createElement('button');
+                                lyrBtn.className = 'btn btn-secondary';
+                                lyrBtn.style.padding = '4px 8px';
+                                lyrBtn.style.fontSize = '12px';
+                                lyrBtn.innerHTML = '<i data-lucide="align-left" style="width: 12px; height: 12px;"></i> Lyrics';
+                                lyrBtn.onclick = (e) => {
+                                    e.stopPropagation();
+                                    document.getElementById('lyrics-id-input').value = item.lyrics_browse_id;
+                                    switchTab('lyrics');
+                                    loadLyrics();
+                                };
+                                actions.appendChild(lyrBtn);
+                            }
+
+                            row.appendChild(actions);
+                            tracksList.appendChild(row);
+                        });
+                        lucide.createIcons({ props: { class: 'lucide-icon' }, node: tracksList });
+                    }
+                }
+            } catch (err) {
+                document.getElementById('playlist-raw').textContent = err.toString();
+            }
+        }
+
+        async function loadLyrics() {
+            const id = document.getElementById('lyrics-id-input').value.trim();
+            if (!id) return;
+
+            const box = document.getElementById('lyrics-content');
+            box.textContent = 'Loading lyrics...';
+            document.getElementById('lyrics-raw').textContent = 'Loading...';
+
+            try {
+                const res = await fetch(`/api/lyrics?id=${encodeURIComponent(id)}`);
+                const data = await res.json();
+                document.getElementById('lyrics-raw').textContent = JSON.stringify(data, null, 4);
+
+                if (res.ok && data.lyrics) {
+                    box.textContent = data.lyrics;
+                } else {
+                    box.textContent = `Error: ${data.error || 'Failed to parse lyrics'}`;
+                }
+            } catch (err) {
+                box.textContent = `Error: ${err.message}`;
+                document.getElementById('lyrics-raw').textContent = err.toString();
+            }
+        }
+    </script>
+</body>
+
+</html>
