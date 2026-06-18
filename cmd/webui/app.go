@@ -25,6 +25,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
@@ -33,6 +34,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,6 +43,8 @@ import (
 	stelleengine "github.com/dlcuy22/OngoPlayer/Audioengine/StelleEngine"
 	"github.com/dlcuy22/OngoPlayer/internal/service/discordrpc"
 	"github.com/dlcuy22/OngoPlayer/internal/service/lyrics"
+	"github.com/dlcuy22/ytm-go"
+	"github.com/lrstanley/go-ytdlp"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -75,14 +79,16 @@ type LyricLine struct {
 }
 
 type TrackInfo struct {
-	Path     string `json:"path"`
-	Name     string `json:"name"`
-	Index    int    `json:"index"`
-	Title    string `json:"title"`
-	Artist   string `json:"artist"`
-	Album    string `json:"album"`
-	Format   string `json:"format"`
-	HasCover bool   `json:"hasCover"`
+	Path           string `json:"path"`
+	Name           string `json:"name"`
+	Index          int    `json:"index"`
+	Title          string `json:"title"`
+	Artist         string `json:"artist"`
+	Album          string `json:"album"`
+	Format         string `json:"format"`
+	HasCover       bool   `json:"hasCover"`
+	LyricsBrowseID string `json:"lyricsBrowseID,omitempty"`
+	YTMSongID      string `json:"ytmSongID,omitempty"`
 }
 
 type App struct {
@@ -99,6 +105,9 @@ type App struct {
 
 	rpc        *discordrpc.Manager // nil when Rich Presence is disabled
 	rpcEnabled bool
+
+	ytmClient  *ytm.Client
+	ytdlpReady bool
 }
 
 func NewApp() *App {
@@ -111,9 +120,10 @@ func NewApp() *App {
 		os.Exit(1)
 	}
 	return &App{
-		engine:  engine,
-		current: -1,
-		volume:  100,
+		engine:    engine,
+		current:   -1,
+		volume:    100,
+		ytmClient: ytm.NewClient(),
 	}
 }
 
@@ -123,6 +133,22 @@ func (a *App) startup(ctx context.Context) {
 		return
 	}
 	logInfo("startup (debug logging: %v)", debugEnabled)
+	
+	// Create cache folder for streaming
+	_ = os.MkdirAll("./cache", 0755)
+
+	go func() {
+		logInfo("checking/installing go-ytdlp dependencies...")
+		if _, err := ytdlp.InstallAll(context.Background()); err != nil {
+			logInfo("ytdlp installation warning: %v", err)
+		} else {
+			logInfo("ytdlp dependencies are ready.")
+			a.mu.Lock()
+			a.ytdlpReady = true
+			a.mu.Unlock()
+		}
+	}()
+
 	a.engine.SetOnComplete(a.onTrackComplete)
 	go a.broadcastProgress()
 }
@@ -288,6 +314,102 @@ func (a *App) onTrackComplete() {
 	a.playIndex(next)
 }
 
+// ensureYTMSong handles cache lookup and background progressive download for YouTube Music tracks.
+func (a *App) ensureYTMSong(songID string) (string, error) {
+	cachePath := filepath.Join("cache", songID+".opus")
+	readyPath := cachePath + ".ready"
+
+	// Cache hit
+	if _, err := os.Stat(readyPath); err == nil {
+		if _, errStat := os.Stat(cachePath); errStat == nil {
+			logInfo("YTM Playback: Cache hit for %s", songID)
+			return cachePath, nil
+		}
+	}
+
+	// Cache miss / partial download cleanup
+	logInfo("YTM Playback: Cache miss/partial cache for %s. Downloading...", songID)
+	_ = os.Remove(readyPath)
+	_ = os.Remove(cachePath)
+
+	a.mu.Lock()
+	ready := a.ytdlpReady
+	a.mu.Unlock()
+
+	if !ready {
+		for i := 0; i < 15; i++ {
+			time.Sleep(500 * time.Millisecond)
+			a.mu.Lock()
+			ready = a.ytdlpReady
+			a.mu.Unlock()
+			if ready {
+				break
+			}
+		}
+		if !ready {
+			return "", fmt.Errorf("yt-dlp is not ready/installed yet")
+		}
+	}
+
+	dl := ytdlp.New().
+		Format("bestaudio").
+		ExtractAudio().
+		AudioFormat("opus").
+		AudioQuality("0").
+		Output(cachePath).
+		NoPlaylist()
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := dl.Run(context.Background(), "https://www.youtube.com/watch?v="+songID)
+		if err != nil {
+			logInfo("ytdlp download error for %s: %v", songID, err)
+			errCh <- err
+			return
+		}
+		
+		// Write the ready file to mark caching complete
+		fReady, errReady := os.Create(readyPath)
+		if errReady == nil {
+			fReady.Close()
+		}
+		logInfo("YTM Playback: Finished caching %s", songID)
+		errCh <- nil
+	}()
+
+	// Wait until at least 50KB of data is written or max 6 seconds
+	start := time.Now()
+	for {
+		if time.Since(start) > 6*time.Second {
+			break
+		}
+		select {
+		case err := <-errCh:
+			if err != nil {
+				return "", err
+			}
+			return cachePath, nil
+		default:
+		}
+
+		if info, err := os.Stat(cachePath); err == nil && info.Size() > 50*1024 {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+
+	return cachePath, nil
+}
+
+// resolvePlayPath resolves dynamic network/YTM paths to local paths.
+func (a *App) resolvePlayPath(path string) (string, error) {
+	if strings.HasPrefix(path, "ytm:") {
+		songID := strings.TrimPrefix(path, "ytm:")
+		return a.ensureYTMSong(songID)
+	}
+	return path, nil
+}
+
 // playIndex starts playback of a queue index and emits track_changed.
 func (a *App) playIndex(index int) error {
 	a.mu.Lock()
@@ -301,9 +423,16 @@ func (a *App) playIndex(index int) error {
 	a.mu.Unlock()
 
 	logInfo("play index=%d title=%q", index, track.Title)
-	err := a.engine.Play(track.Path, 0, vol)
+	
+	playPath, err := a.resolvePlayPath(track.Path)
 	if err != nil {
-		logInfo("play failed for %q: %v", track.Path, err)
+		logInfo("resolve play path failed for %q: %v", track.Path, err)
+		return err
+	}
+
+	err = a.engine.Play(playPath, 0, vol)
+	if err != nil {
+		logInfo("play failed for %q (resolved: %q): %v", track.Path, playPath, err)
 		return err
 	}
 	runtime.EventsEmit(a.ctx, "track_changed", a.GetCurrentTrack())
@@ -344,12 +473,33 @@ func (a *App) resolveLyrics(track TrackInfo) {
 		return
 	}
 
+	// 1. Prioritize YouTube Music lyrics if LyricsBrowseID is available
+	if track.LyricsBrowseID != "" {
+		logDebug("lyrics: fetching from YTM using LyricsBrowseID: %s", track.LyricsBrowseID)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		content, err := a.ytmClient.GetSongLyrics(ctx, track.LyricsBrowseID)
+		cancel()
+		if err == nil && content != "" {
+			lines := lyrics.Parse(content)
+			logInfo("lyrics: fetched %d lines from YTM for %q", len(lines), track.Title)
+			if path, saveErr := lyrics.SaveToFile(track.Path, musicDir, content); saveErr != nil {
+				logDebug("lyrics: save failed: %v", saveErr)
+			} else {
+				logDebug("lyrics: saved to %s", path)
+			}
+			emit(lines, "ytm")
+			return
+		}
+		logDebug("lyrics: YTM fetch failed or empty, falling back to lrclib")
+	}
+
 	if track.Artist == "" || track.Title == "" {
 		logDebug("lyrics: skipping API fetch, missing artist or title")
 		emit(nil, "none")
 		return
 	}
 
+	// 2. Fallback to lrclib API
 	content, err := lyrics.FetchFromAPI(track.Artist, track.Title, track.Album, a.engine.GetDuration())
 	if err != nil || content == "" {
 		logDebug("lyrics: API miss for %q: %v", track.Title, err)
@@ -571,6 +721,14 @@ func (a *App) PlayFile(filePath string) error {
 
 	err := a.engine.Play(filePath, 0, vol)
 	if err == nil {
+		playPath, errResolve := a.resolvePlayPath(filePath)
+		if errResolve == nil && playPath != filePath {
+			// If it's a resolved YTM path, play the resolved local cache path instead
+			_ = a.engine.Stop()
+			err = a.engine.Play(playPath, 0, vol)
+		}
+	}
+	if err == nil {
 		runtime.EventsEmit(a.ctx, "track_changed", a.GetCurrentTrack())
 		go a.resolveLyrics(ti)
 		go a.updateRPC(ti)
@@ -688,3 +846,96 @@ func (a *App) GetQueue() []TrackInfo {
 	defer a.mu.Unlock()
 	return a.queue
 }
+
+// SearchYTM searches for music on YouTube Music.
+func (a *App) SearchYTM(query string) (*ytm.SearchResults, error) {
+	logInfo("YTM Search: %q", query)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return a.ytmClient.Search(ctx, query, "", false)
+}
+
+// GetYTMSuggestions fetches real-time autocomplete suggestions from YouTube Music.
+func (a *App) GetYTMSuggestions(query string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	suggestions, err := a.ytmClient.GetSearchSuggestions(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, len(suggestions))
+	for i, s := range suggestions {
+		out[i] = s.Query
+	}
+	return out, nil
+}
+
+// GetYTMArtist retrieves detail layout for an artist.
+func (a *App) GetYTMArtist(artistID string) (*ytm.Artist, error) {
+	logInfo("YTM LoadArtist: %s", artistID)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return a.ytmClient.LoadArtist(ctx, artistID)
+}
+
+// GetYTMPlaylist loads a playlist or album.
+func (a *App) GetYTMPlaylist(playlistID string) (*ytm.Playlist, error) {
+	logInfo("YTM LoadPlaylist: %s", playlistID)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	
+	p, err := a.ytmClient.LoadPlaylist(ctx, playlistID, nil, nil, nil, false)
+	if err != nil && strings.HasPrefix(playlistID, "VL") {
+		p, err = a.ytmClient.LoadPlaylist(ctx, playlistID, nil, nil, nil, true)
+	}
+	return p, err
+}
+
+// GetYTMRadio retrieves auto-mix recommended tracks for a song and formats them as TrackInfo.
+func (a *App) GetYTMRadio(songID string) ([]TrackInfo, error) {
+	logInfo("YTM GetSongRadio for songID: %s", songID)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	
+	radio, err := a.ytmClient.GetSongRadio(ctx, songID, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	
+	out := make([]TrackInfo, 0, len(radio.Items))
+	for i, s := range radio.Items {
+		var artists []string
+		for _, art := range s.Artists {
+			artists = append(artists, art.Name)
+		}
+		artistStr := strings.Join(artists, ", ")
+		
+		albumName := ""
+		if s.Album != nil {
+			albumName = s.Album.Name
+		}
+		
+		out = append(out, TrackInfo{
+			Path:           "ytm:" + s.ID,
+			Name:           s.Name,
+			Index:          i,
+			Title:          s.Name,
+			Artist:         artistStr,
+			Album:          albumName,
+			Format:         "YTM",
+			HasCover:       true,
+			LyricsBrowseID: s.LyricsBrowseID,
+			YTMSongID:      s.ID,
+		})
+	}
+	return out, nil
+}
+
+// GetYTMSongLyrics retrieves song lyrics in plaintext.
+func (a *App) GetYTMSongLyrics(lyricsBrowseID string) (string, error) {
+	logInfo("YTM GetSongLyrics for ID: %s", lyricsBrowseID)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return a.ytmClient.GetSongLyrics(ctx, lyricsBrowseID)
+}
+
