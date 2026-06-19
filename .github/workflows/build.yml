@@ -7,108 +7,229 @@ on:
     branches: ["main", "master"]
 
 jobs:
-  build:
+  # ─── Linux GUI builds (cross-compile on ubuntu-latest) ─────────────────────
+  build-linux:
     name: Build ${{ matrix.name }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: "Windows GUI"
-            os: windows
-            arch: amd64
-            tags: ""
-            path: "./cmd/gui"
-            output: "OngoPlayer-gui-windows.exe"
-            install_deps: true
-
-
           - name: "Linux X11 OpenGL GUI"
-            os: linux
             arch: amd64
             tags: "-tags nowayland"
             path: "./cmd/gui"
             output: "OngoPlayer-gui-linux-x11gl"
-            install_deps: true
 
           - name: "Linux Wayland OpenGL GUI"
-            os: linux
             arch: amd64
             tags: "-tags nox11"
             path: "./cmd/gui"
             output: "OngoPlayer-gui-linux-wayopengl"
-            install_deps: true
 
           - name: "Linux Wayland Vulkan GUI"
-            os: linux
             arch: amd64
             tags: "-tags nox11,noopengl"
             path: "./cmd/gui"
             output: "OngoPlayer-gui-linux-wayvulkan"
-            install_deps: true
-
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v5
         with:
-          go-version: "1.26.x"
+          go-version: "1.23.x"
 
-      - name: Install Dependencies
-        if: matrix.install_deps == true
+      - name: Install Linux Dependencies
         run: |
           sudo apt-get update
-          if [ "${{ matrix.os }}" = "linux" ]; then
-            sudo apt-get install -y gcc pkg-config libwayland-dev libx11-dev libx11-xcb-dev libxkbcommon-x11-dev libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev libvulkan-dev libasound2-dev
-          elif [ "${{ matrix.os }}" = "windows" ]; then
-            sudo apt-get install -y nsis zstd gcc-mingw-w64-x86-64
-          fi
+          sudo apt-get install -y gcc pkg-config \
+            libwayland-dev libx11-dev libx11-xcb-dev libxkbcommon-x11-dev \
+            libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev \
+            libvulkan-dev libasound2-dev
 
       - name: Build C DSP Library
         run: |
-          if [ "${{ matrix.os }}" = "windows" ]; then
-            mkdir -p build/win
-            x86_64-w64-mingw32-gcc -O3 -shared -ffast-math -o build/win/stelle_dsp.dll Audioengine/StelleEngine/dsp/stelle_dsp.c
-          else
-            mkdir -p build
-            gcc -O3 -shared -fPIC -ffast-math -o build/stelle_dsp.so Audioengine/StelleEngine/dsp/stelle_dsp.c
-          fi
+          mkdir -p build
+          gcc -O3 -shared -fPIC -ffast-math -o build/stelle_dsp.so \
+            Audioengine/StelleEngine/dsp/stelle_dsp.c
 
       - name: Build Binary
         env:
-          GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
-        run: |
-          if [ "${{ matrix.name }}" = "Windows GUI" ]; then
-            GOOS= GOARCH= go run gioui.org/cmd/gogio@latest -target windows -icon ./cmd/gui/assets/appicon.png -o build/${{ matrix.output }} ${{ matrix.path }}
-          else
-            go build ${{ matrix.tags }} -o build/${{ matrix.output }} ${{ matrix.path }}
-          fi
-
-      - name: Build Windows Installer
-        if: matrix.name == 'Windows GUI'
-        run: |
-          mkdir -p build/win
-          cp build/${{ matrix.output }} build/win/OngoPlayer.exe
-          go run tools/download_win_deps.go
-          makensis tools/installer.nsi
+        run: go build ${{ matrix.tags }} -o build/${{ matrix.output }} ${{ matrix.path }}
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.output }}
           path: |
             build/${{ matrix.output }}
             build/stelle_dsp.so
+          if-no-files-found: warn
+
+  # ─── Windows GUI build + installer (native windows-latest runner) ──────────
+  build-windows-gui:
+    name: Build Windows GUI
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2 (UCRT64)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-opusfile
+            mingw-w64-ucrt-x86_64-opus
+            mingw-w64-ucrt-x86_64-libogg
+            mingw-w64-ucrt-x86_64-sdl3
+            mingw-w64-ucrt-x86_64-libvorbis
+            mingw-w64-ucrt-x86_64-mpg123
+            nsis
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+
+      - name: Build C DSP Library
+        shell: msys2 {0}
+        run: |
+          mkdir -p build/win
+          gcc -O3 -shared -ffast-math -o build/win/stelle_dsp.dll \
+            Audioengine/StelleEngine/dsp/stelle_dsp.c
+
+      - name: Build Windows GUI Binary
+        shell: msys2 {0}
+        env:
+          GOPATH: ${{ github.workspace }}/go-path
+        run: |
+          export PATH="/ucrt64/bin:$PATH"
+          export CGO_ENABLED=1
+          go run gioui.org/cmd/gogio@latest \
+            -target windows \
+            -icon ./cmd/gui/assets/appicon.png \
+            -o build/OngoPlayer-gui-windows.exe \
+            ./cmd/gui
+
+      - name: Stage Runtime DLLs
+        shell: msys2 {0}
+        run: |
+          ucrt_bin="/ucrt64/bin"
+          for dll in libopus-0.dll libopusfile-0.dll libogg-0.dll \
+                     libvorbis-0.dll libvorbisfile-3.dll \
+                     libmpg123-0.dll SDL3.dll; do
+            cp "$ucrt_bin/$dll" build/win/
+          done
+          cp libFLAC.dll build/win/ || true
+
+      - name: Download FLAC DLL
+        shell: pwsh
+        run: go run tools/download_win_deps.go
+
+      - name: Build Installer
+        shell: msys2 {0}
+        run: |
+          cp build/OngoPlayer-gui-windows.exe build/win/OngoPlayer.exe
+          makensis tools/installer.nsi
+
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: OngoPlayer-gui-windows.exe
+          path: |
+            build/OngoPlayer-gui-windows.exe
             build/win/stelle_dsp.dll
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
       - name: Upload Windows Installer
-        if: matrix.name == 'Windows GUI'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: OngoPlayer_Installer
           path: build/OngoPlayer_Installer.exe
+          if-no-files-found: warn
+
+  # ─── WebUI (Wails) Windows build ──────────────────────────────────────────
+  build-webui-windows:
+    name: Build WebUI (Wails) Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Set up MSYS2 (UCRT64) for CGo
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-opusfile
+            mingw-w64-ucrt-x86_64-opus
+            mingw-w64-ucrt-x86_64-libogg
+            mingw-w64-ucrt-x86_64-sdl3
+            mingw-w64-ucrt-x86_64-libvorbis
+            mingw-w64-ucrt-x86_64-mpg123
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend dependencies
+        working-directory: cmd/webui/frontend
+        run: pnpm install
+
+      - name: Build C DSP Library
+        shell: msys2 {0}
+        run: |
+          mkdir -p build/webui-win
+          gcc -O3 -shared -ffast-math -o build/webui-win/stelle_dsp.dll \
+            Audioengine/StelleEngine/dsp/stelle_dsp.c
+
+      - name: Build WebUI (Wails)
+        shell: msys2 {0}
+        env:
+          GOPATH: ${{ github.workspace }}/go-path
+        run: |
+          export PATH="/ucrt64/bin:$HOME/go/bin:$PATH"
+          export CGO_ENABLED=1
+          cd cmd/webui
+          wails build -platform windows/amd64 \
+            -o ../../build/webui-win/Ongoplayer-webui.exe
+
+      - name: Stage Runtime DLLs
+        shell: msys2 {0}
+        run: |
+          ucrt_bin="/ucrt64/bin"
+          for dll in libopus-0.dll libopusfile-0.dll libogg-0.dll \
+                     libvorbis-0.dll libvorbisfile-3.dll \
+                     libmpg123-0.dll SDL3.dll; do
+            cp "$ucrt_bin/$dll" build/webui-win/
+          done
+
+      - name: Upload WebUI Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ongoplayer-webui-windows
+          path: build/webui-win/
+          if-no-files-found: warn

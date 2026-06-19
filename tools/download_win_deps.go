@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	ucrt64RepoURL       = "https://archive.msys2.org/mingw/ucrt64/"
+	ucrt64RepoURL       = "https://mirror.msys2.org/mingw/ucrt64/"
 	flacReleaseAssetURL = "https://github.com/xiph/flac/releases/download/1.5.0/flac-1.5.0-win.zip"
 )
 
