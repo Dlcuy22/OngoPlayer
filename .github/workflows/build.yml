@@ -64,7 +64,17 @@ jobs:
           if [ "${{ matrix.os }}" = "linux" ]; then
             sudo apt-get install -y gcc pkg-config libwayland-dev libx11-dev libx11-xcb-dev libxkbcommon-x11-dev libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev libvulkan-dev libasound2-dev
           elif [ "${{ matrix.os }}" = "windows" ]; then
-            sudo apt-get install -y nsis zstd
+            sudo apt-get install -y nsis zstd gcc-mingw-w64-x86-64
+          fi
+
+      - name: Build C DSP Library
+        run: |
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            mkdir -p build/win
+            x86_64-w64-mingw32-gcc -O3 -shared -ffast-math -o build/win/stelle_dsp.dll Audioengine/StelleEngine/dsp/stelle_dsp.c
+          else
+            mkdir -p build
+            gcc -O3 -shared -fPIC -ffast-math -o build/stelle_dsp.so Audioengine/StelleEngine/dsp/stelle_dsp.c
           fi
 
       - name: Build Binary
@@ -90,7 +100,11 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.output }}
-          path: build/${{ matrix.output }}
+          path: |
+            build/${{ matrix.output }}
+            build/stelle_dsp.so
+            build/win/stelle_dsp.dll
+          if-no-files-found: ignore
 
       - name: Upload Windows Installer
         if: matrix.name == 'Windows GUI'
