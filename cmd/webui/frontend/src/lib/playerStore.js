@@ -20,6 +20,9 @@ import {
   PickFolder, PickFolderAppend, GetCurrentTrack, GetCover,
   SetShuffle, GetShuffle, SetLoopMode, GetLoopMode,
   SetRPCEnabled, GetRPCEnabled,
+  ClearQueue, GetQueue, GetYTMArtist, GetYTMPlaylist,
+  PlayYTMSong, RemoveFromQueue, ReorderQueue, SearchYTM,
+  InsertYTMSongAt,
 } from "../../wailsjs/go/main/App.js";
 import { EventsOn } from "../../wailsjs/runtime/runtime.js";
 
@@ -33,6 +36,15 @@ export const shuffle = writable(false);
 export const loopMode = writable(0); // 0 off, 1 all, 2 one
 export const coverUrl = writable(""); // cover for the active track ("" = none)
 export const lyrics = writable([]); // [{ time, text }] for the active track
+export const loadingIndex = writable(-1);
+export const lyricsLoading = writable(false);
+
+// Multi-page routing stores
+export const activeView = writable("home");
+export const navigationStack = writable([]);
+export const searchResults = writable(null);
+export const artistDetail = writable(null);
+export const playlistDetail = writable(null);
 
 // Settings UI state and persisted preferences.
 export const showSettings = writable(false);
@@ -82,6 +94,7 @@ export function initPlayerSync() {
   GetShuffle().then((s) => shuffle.set(s));
   GetLoopMode().then((m) => loopMode.set(m));
   GetRPCEnabled().then((on) => rpcEnabled.set(on));
+  GetQueue().then((tracks) => queue.set(tracks || []));
 
   EventsOn("playback_progress", (data) => {
     duration.set(data.duration);
@@ -103,13 +116,30 @@ export function initPlayerSync() {
     position.set(0);
   });
 
+  EventsOn("track_loading", (data) => {
+    loadingIndex.set(data.index);
+  });
+
+  EventsOn("track_loading_finished", (data) => {
+    loadingIndex.set(-1);
+  });
+
   EventsOn("track_changed", (track) => {
+    loadingIndex.set(-1);
     if (track) {
       currentTrack.set(track);
       isPlaying.set(true);
       position.set(0);
       lyrics.set([]); // clear stale lyrics until the new ones arrive
       loadCoverFor(track);
+      lyricsLoading.set(true);
+    } else {
+      currentTrack.set(null);
+      isPlaying.set(false);
+      position.set(0);
+      lyrics.set([]);
+      coverUrl.set("");
+      lyricsLoading.set(false);
     }
   });
 
@@ -119,6 +149,11 @@ export function initPlayerSync() {
     const cur = get(currentTrack);
     if (cur && cur.index !== data.index) return;
     lyrics.set(Array.isArray(data.lines) ? data.lines : []);
+    lyricsLoading.set(false);
+  });
+
+  EventsOn("queue_changed", (tracks) => {
+    queue.set(tracks || []);
   });
 }
 
@@ -130,7 +165,15 @@ using the cache to avoid repeat backend calls.
 	      track: TrackInfo (must carry index and hasCover)
 */
 function loadCoverFor(track) {
-  if (!track || !track.hasCover) {
+  if (!track) {
+    coverUrl.set("");
+    return;
+  }
+  if (track.coverURL) {
+    coverUrl.set(track.coverURL);
+    return;
+  }
+  if (!track.hasCover) {
     coverUrl.set("");
     return;
   }
@@ -162,6 +205,10 @@ Used by the tracklist for mini thumbnails.
 	      Promise<string>
 */
 export function getCover(index, hasCover) {
+  const q = get(queue);
+  if (q && q[index] && q[index].coverURL) {
+    return Promise.resolve(q[index].coverURL);
+  }
   if (!hasCover) return Promise.resolve("");
   if (coverCache.has(index)) return Promise.resolve(coverCache.get(index));
   return GetCover(index).then((url) => {
@@ -319,4 +366,107 @@ playerPlayQueueIndex plays a specific track from the current queue.
 */
 export function playerPlayQueueIndex(index) {
   PlayTrack(index).then(() => isPlaying.set(true));
+}
+
+/*
+playerRemoveTrack deletes a track from the queue by index.
+*/
+export function playerRemoveTrack(index) {
+  RemoveFromQueue(index).then((tracks) => {
+    queue.set(tracks || []);
+  });
+}
+
+/*
+playerReorderQueue moves a track from fromIndex to toIndex.
+*/
+export function playerReorderQueue(fromIndex, toIndex) {
+  ReorderQueue(fromIndex, toIndex).then((tracks) => {
+    queue.set(tracks || []);
+  });
+}
+
+/*
+playerClearQueue clears all tracks from the queue.
+*/
+export function playerClearQueue() {
+  ClearQueue().then((tracks) => {
+    queue.set(tracks || []);
+  });
+}
+
+/*
+playerPlayYTMSong appends a YTM song to the queue and starts playing it.
+*/
+export function playerPlayYTMSong(songID, title, artist, album, lyricsBrowseID, coverURL) {
+  PlayYTMSong(songID, title, artist, album, lyricsBrowseID || "", coverURL || "").then(() => {
+    isPlaying.set(true);
+  });
+}
+
+/*
+playerInsertYTMSongAt inserts a YTM song at the specified queue index without playing.
+*/
+export function playerInsertYTMSongAt(index, songID, title, artist, album, lyricsBrowseID, coverURL) {
+  InsertYTMSongAt(index, songID, title, artist, album, lyricsBrowseID || "", coverURL || "").then((tracks) => {
+    queue.set(tracks || []);
+  });
+}
+
+/*
+navigateTo updates the active view and navigation stack.
+*/
+export function navigateTo(view, data = null, clearStack = false) {
+  if (clearStack) {
+    navigationStack.set([]);
+  } else {
+    const stack = get(navigationStack);
+    const curView = get(activeView);
+    let curData = null;
+    if (curView === "search") curData = get(searchResults);
+    else if (curView === "artist") curData = get(artistDetail);
+    else if (curView === "playlist") curData = get(playlistDetail);
+
+    // Prevent consecutive duplicate navigation items
+    let shouldPush = true;
+    if (curView === view) {
+      if (view === "search") {
+        shouldPush = false;
+      } else if (curData && data) {
+        const curID = curData.details?.id || curData.id;
+        const newID = data.details?.id || data.id;
+        if (curID === newID) {
+          shouldPush = false;
+        }
+      } else {
+        shouldPush = false;
+      }
+    }
+
+    if (shouldPush && curView) {
+      navigationStack.set([...stack, { view: curView, data: curData }]);
+    }
+  }
+
+  activeView.set(view);
+  if (view === "search") searchResults.set(data);
+  else if (view === "artist") artistDetail.set(data);
+  else if (view === "playlist") playlistDetail.set(data);
+}
+
+/*
+navigateBack goes back one step in the navigation history.
+*/
+export function navigateBack() {
+  const stack = get(navigationStack);
+  if (stack.length === 0) {
+    activeView.set("home");
+    return;
+  }
+  const prev = stack[stack.length - 1];
+  navigationStack.set(stack.slice(0, -1));
+  activeView.set(prev.view);
+  if (prev.view === "search") searchResults.set(prev.data);
+  else if (prev.view === "artist") artistDetail.set(prev.data);
+  else if (prev.view === "playlist") playlistDetail.set(prev.data);
 }

@@ -13,16 +13,30 @@
   //   playTrack    -> detail: queue index to play
   //   pickFolder   -> request native folder picker (replace queue)
   //   appendFolder -> request native folder picker (append to queue)
+  //   reorder      -> detail: { from, to } index reordering
+  //   removeTrack  -> detail: index to remove
 
   import { createEventDispatcher } from "svelte";
   import Icon from "./Icon.svelte";
-  import { getCover } from "../lib/playerStore.js";
+  import ContextMenu from "./ContextMenu.svelte";
+  import { getCover, loadingIndex } from "../lib/playerStore.js";
 
   export let queue = [];
   export let currentIndex = -1;
   export let isPlaying = false;
 
   const dispatch = createEventDispatcher();
+
+  // Drag and drop state
+  let draggedIndex = null;
+  let dragOverIndex = null;
+  let scrollContainer;
+
+  // Context menu state
+  let showMenu = false;
+  let menuX = 0;
+  let menuY = 0;
+  let contextTrackIndex = null;
 
   function displayTitle(track) {
     if (!track) return "Unknown";
@@ -34,7 +48,98 @@
 
   // Resolve a thumbnail for a row; returns a Promise<string> ("" when none).
   function thumbFor(track) {
+    if (track.coverURL) {
+      return Promise.resolve(track.coverURL);
+    }
     return getCover(track.index, track.hasCover);
+  }
+
+  // Drag handlers
+  function handleDragStart(e, index) {
+    draggedIndex = index;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", index);
+  }
+
+  function handleDragOver(e, index) {
+    e.preventDefault();
+    dragOverIndex = index;
+  }
+
+  function handleDragLeave(e, index) {
+    if (dragOverIndex === index) {
+      dragOverIndex = null;
+    }
+  }
+
+  function handleDrop(e, index) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragOverIndex = null;
+
+    const rawData = e.dataTransfer.getData("application/json");
+    if (rawData) {
+      try {
+        const data = JSON.parse(rawData);
+        if (data.type === "ytm-track") {
+          dispatch("insertYTMTrack", { index, track: data.track });
+          return;
+        }
+      } catch (err) {
+        // ignore JSON parse errors
+      }
+    }
+
+    if (draggedIndex === null) {
+      return;
+    }
+
+    if (draggedIndex === index) {
+      draggedIndex = null;
+      return;
+    }
+    dispatch("reorder", { from: draggedIndex, to: index });
+    draggedIndex = null;
+  }
+
+  function handleDragEnd() {
+    draggedIndex = null;
+    dragOverIndex = null;
+  }
+
+  function handleContainerDragOver(e) {
+    if (draggedIndex === null || !scrollContainer) return;
+    const rect = scrollContainer.getBoundingClientRect();
+    const threshold = 40; // distance from top/bottom to start scrolling
+    const speed = 10;
+
+    const mouseY = e.clientY;
+    if (mouseY < rect.top + threshold) {
+      scrollContainer.scrollTop -= speed;
+    } else if (mouseY > rect.bottom - threshold) {
+      scrollContainer.scrollTop += speed;
+    }
+  }
+
+  // Context Menu handlers
+  function handleContextMenu(e, index) {
+    e.preventDefault();
+    contextTrackIndex = index;
+    menuX = e.clientX;
+    menuY = e.clientY;
+    showMenu = true;
+  }
+
+  function menuPlayTrack() {
+    if (contextTrackIndex !== null) {
+      dispatch("playTrack", contextTrackIndex);
+    }
+  }
+
+  function menuRemoveTrack() {
+    if (contextTrackIndex !== null) {
+      dispatch("removeTrack", contextTrackIndex);
+    }
   }
 </script>
 
@@ -42,7 +147,7 @@
   <div class="tl-header">
     <div class="tl-title">
       <Icon name="list-music" size={15} />
-      <span>Library</span>
+      <span>Queue</span>
     </div>
     <span class="tl-count">{queue.length}</span>
   </div>
@@ -61,7 +166,13 @@
     </button>
   </div>
 
-  <div class="tl-scroll">
+  <div
+    class="tl-scroll"
+    bind:this={scrollContainer}
+    on:dragover={handleContainerDragOver}
+    on:dragover|preventDefault
+    on:drop={(e) => handleDrop(e, queue.length)}
+  >
     {#if queue.length === 0}
       <div class="tl-empty">
         <Icon name="music" size={22} strokeWidth={1.5} />
@@ -72,21 +183,44 @@
         <button
           class="track-row"
           class:active={i === currentIndex}
+          class:dragging={i === draggedIndex}
+          class:drag-over-top={dragOverIndex === i && draggedIndex !== null && i < draggedIndex}
+          class:drag-over-bottom={dragOverIndex === i && draggedIndex !== null && i > draggedIndex}
+          class:loading={i === $loadingIndex}
+          disabled={i === $loadingIndex}
+          draggable={i !== $loadingIndex}
+          on:dragstart={(e) => handleDragStart(e, i)}
+          on:dragover={(e) => handleDragOver(e, i)}
+          on:dragleave={(e) => handleDragLeave(e, i)}
+          on:drop={(e) => handleDrop(e, i)}
+          on:dragend={handleDragEnd}
           on:click={() => dispatch("playTrack", i)}
+          on:contextmenu={(e) => handleContextMenu(e, i)}
           title={displayTitle(track)}
         >
-          <div class="thumb">
-            {#await thumbFor(track) then url}
-              {#if url}
-                <img src={url} alt="" />
-              {:else}
-                <span class="thumb-fallback">
-                  <Icon name="music" size={16} strokeWidth={1.5} />
-                </span>
-              {/if}
-            {/await}
+          <!-- Grip Icon for reordering handle preview -->
+          <div class="drag-grip">
+            <Icon name="grip-vertical" size={12} strokeWidth={1.5} />
+          </div>
 
-            {#if i === currentIndex && isPlaying}
+          <div class="thumb">
+            {#if i === $loadingIndex}
+              <div class="dot-flashing">
+                <span></span><span></span><span></span>
+              </div>
+            {:else}
+              {#await thumbFor(track) then url}
+                {#if url}
+                  <img src={url} alt="" />
+                {:else}
+                  <span class="thumb-fallback">
+                    <Icon name="music" size={16} strokeWidth={1.5} />
+                  </span>
+                {/if}
+              {/await}
+            {/if}
+
+            {#if i === currentIndex && isPlaying && i !== $loadingIndex}
               <span class="eq" aria-hidden="true">
                 <span></span><span></span><span></span>
               </span>
@@ -104,6 +238,20 @@
     {/if}
   </div>
 </div>
+
+{#if showMenu}
+  <ContextMenu
+    x={menuX}
+    y={menuY}
+    items={[
+      { label: "Play Track", icon: "play", action: menuPlayTrack },
+      { label: "Remove from Queue", icon: "trash-2", action: menuRemoveTrack }
+    ]}
+    onClose={() => {
+      showMenu = false;
+    }}
+  />
+{/if}
 
 <style>
   .tracklist {
@@ -151,6 +299,7 @@
     flex: 1;
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 8px;
     padding: 9px 12px;
     background: var(--surface-2);
@@ -206,7 +355,7 @@
   .track-row {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     width: 100%;
     padding: 7px 10px;
     background: transparent;
@@ -215,7 +364,15 @@
     color: var(--text-dim);
     text-align: left;
     cursor: pointer;
+    position: relative;
     transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .track-row:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: transparent !important;
+    color: var(--text-faint) !important;
   }
 
   .track-row:hover {
@@ -228,10 +385,51 @@
     color: var(--text);
   }
 
+  .track-row.dragging {
+    opacity: 0.4;
+  }
+
+  /* Dynamic reorder insertion visual feedback lines */
+  .track-row.drag-over-top::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: var(--text);
+    z-index: 10;
+  }
+
+  .track-row.drag-over-bottom::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: var(--text);
+    z-index: 10;
+  }
+
+  .drag-grip {
+    color: var(--text-faint);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .track-row:hover .drag-grip {
+    opacity: 1;
+  }
+
   .thumb {
     position: relative;
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     flex-shrink: 0;
     border-radius: 6px;
     overflow: hidden;
@@ -298,9 +496,11 @@
   .eq span:nth-child(1) {
     animation-delay: -0.2s;
   }
+
   .eq span:nth-child(2) {
     animation-delay: -0.5s;
   }
+
   .eq span:nth-child(3) {
     animation-delay: -0.1s;
   }

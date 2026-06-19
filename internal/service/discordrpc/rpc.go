@@ -42,6 +42,7 @@ type TrackInfo struct {
 	Artist      string
 	Album       string
 	Cover       image.Image // nil falls back to a default asset key
+	CoverURL    string      // HTTP URL for YouTube Music cover art
 	DurationSec float64     // total track duration in seconds (0 = unknown)
 	ElapsedSec  float64     // current playback position in seconds
 	IsPaused    bool        // whether the track is currently paused
@@ -173,7 +174,12 @@ func (m *Manager) setActivity(track TrackInfo) {
 	largeImage := "ongoplayer"
 	largeText := "OngoPlayer"
 
-	if track.Cover != nil {
+	if track.CoverURL != "" {
+		largeImage = track.CoverURL
+		if track.Album != "" {
+			largeText = track.Album
+		}
+	} else if track.Cover != nil {
 		url, err := m.uploader.GetImageURL(track.Cover)
 		if err != nil {
 			log.Printf("[discordrpc] image upload failed: %v", err)

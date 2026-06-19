@@ -32,6 +32,8 @@
   export let shuffle = false;
   export let loopMode = 0;
   export let animations = true;
+  export let isLocked = false;
+  export let cover = "";
 
   const dispatch = createEventDispatcher();
 
@@ -68,16 +70,30 @@
   }
 </script>
 
-<div class="player" class:anim={animations}>
+<div class="player" class:anim={animations} class:locked={isLocked}>
   <!-- Left: compact now-playing label -->
   <div class="np">
     {#if track}
-      <span class="np-title" title={trackTitle(track)}>
-        {trackTitle(track)}
-      </span>
-      <span class="np-sub">{track.artist || "Local file"}</span>
+      <div class="np-cover">
+        {#if cover}
+          <img src={cover} alt="" />
+        {:else}
+          <Icon name="music" size={14} strokeWidth={1.5} />
+        {/if}
+      </div>
+      <div class="np-meta">
+        <span class="np-title" title={trackTitle(track)}>
+          {trackTitle(track)}
+        </span>
+        <span class="np-sub">{track.artist || "Local file"}</span>
+      </div>
     {:else}
-      <span class="np-title muted">Not playing</span>
+      <div class="np-cover empty">
+        <Icon name="music" size={14} strokeWidth={1.5} />
+      </div>
+      <div class="np-meta">
+        <span class="np-title muted">Not playing</span>
+      </div>
     {/if}
   </div>
 
@@ -87,19 +103,26 @@
       <button
         class="ctl tiny"
         class:on={shuffle}
-        on:click={() => dispatch("shuffle")}
+        on:click={() => !isLocked && dispatch("shuffle")}
+        disabled={isLocked}
         title={shuffle ? "Shuffle on" : "Shuffle off"}
       >
         <Icon name="shuffle" size={16} />
       </button>
 
-      <button class="ctl" on:click={() => dispatch("prev")} title="Previous">
+      <button
+        class="ctl"
+        on:click={() => !isLocked && dispatch("prev")}
+        disabled={isLocked}
+        title="Previous"
+      >
         <Icon name="skip-back" size={18} />
       </button>
 
       <button
         class="ctl play"
-        on:click={() => dispatch("toggle")}
+        on:click={() => !isLocked && dispatch("toggle")}
+        disabled={isLocked}
         title={isPlaying ? "Pause" : "Play"}
       >
         {#if isPlaying}
@@ -109,14 +132,20 @@
         {/if}
       </button>
 
-      <button class="ctl" on:click={() => dispatch("next")} title="Next">
+      <button
+        class="ctl"
+        on:click={() => !isLocked && dispatch("next")}
+        disabled={isLocked}
+        title="Next"
+      >
         <Icon name="skip-forward" size={18} />
       </button>
 
       <button
         class="ctl tiny"
         class:on={loopMode !== 0}
-        on:click={() => dispatch("loop")}
+        on:click={() => !isLocked && dispatch("loop")}
+        disabled={isLocked}
         title={loopTitle}
       >
         <Icon name={loopMode === 2 ? "repeat-1" : "repeat"} size={16} />
@@ -132,9 +161,10 @@
           max={duration || 0}
           step="0.1"
           value={position}
-          on:mousedown={() => dispatch("seekStart")}
+          on:mousedown={() => !isLocked && dispatch("seekStart")}
           on:input={onSeekInput}
           on:change={onSeekChange}
+          disabled={isLocked}
           aria-label="Seek"
         />
       </div>
@@ -175,7 +205,42 @@
     height: 100%;
   }
 
+  .player.locked .controls .ctl,
+  .player.locked .progress {
+    opacity: 0.4;
+    pointer-events: none;
+    cursor: not-allowed;
+  }
+
   .np {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .np-cover {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-faint);
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+
+  .np-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .np-meta {
     display: flex;
     flex-direction: column;
     gap: 2px;

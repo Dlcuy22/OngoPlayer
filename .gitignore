@@ -11,3 +11,5 @@ Skills
 .vscode
 .agents
 reference/
+cmd/webui/cache
+cmd/webui/lyrics

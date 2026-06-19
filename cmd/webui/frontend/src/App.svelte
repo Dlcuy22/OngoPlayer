@@ -1,17 +1,9 @@
 <script>
   // App.svelte is the root layout orchestrator for the OngoPlayer WebUI.
   //
-  // Purpose: Defines the main visual layout (sidebar tracklist, center now
-  // playing, bottom player bar) and wires the reactive Svelte stores to the
-  // individual UI components.
-  //
-  // Key Components:
-  //   - Tracklist:  sidebar queue + folder picker
-  //   - NowPlaying: center cover art, title, lyrics area
-  //   - Player:     bottom transport controls + progress + volume
-  //
-  // Dependencies:
-  //   - lib/playerStore.js: state and backend API management
+  // Purpose: Defines the main visual layout (sidebar tracklist, center multi-page
+  // viewport, resizable right now-playing panel, bottom player bar) and wires
+  // reactive stores to the Svelte components.
 
   import { onMount } from "svelte";
   import {
@@ -26,6 +18,8 @@
     loopMode,
     coverUrl,
     lyrics,
+    loadingIndex,
+    lyricsLoading,
     showSettings,
     rpcEnabled,
     lyricsFontSize,
@@ -41,6 +35,9 @@
     playerPickFolder,
     playerAppendFolder,
     playerPlayQueueIndex,
+    playerReorderQueue,
+    playerRemoveTrack,
+    playerInsertYTMSongAt,
     toggleShuffle,
     cycleLoop,
     openSettings,
@@ -48,12 +45,15 @@
     setRpcEnabled,
     setLyricsFontSize,
     setAnimationsEnabled,
+    navigateTo,
   } from "./lib/playerStore.js";
 
   import Tracklist from "./components/Tracklist.svelte";
+  import CenterPanel from "./components/CenterPanel.svelte";
   import NowPlaying from "./components/NowPlaying.svelte";
   import Player from "./components/Player.svelte";
   import Settings from "./components/Settings.svelte";
+  import SearchBox from "./components/SearchBox.svelte";
   import Icon from "./components/Icon.svelte";
 
   // The active queue position is carried on TrackInfo.index by the backend.
@@ -62,9 +62,49 @@
       ? $currentTrack.index
       : -1;
 
+  // Resizable Right Panel
+  let rightPanelWidth = 340;
+  const MIN_WIDTH = 280;
+  const MAX_WIDTH = 460;
+
+  function startResize(e) {
+    e.preventDefault();
+    const startWidth = rightPanelWidth;
+    const startX = e.clientX;
+
+    function onMouseMove(moveEvent) {
+      const diff = moveEvent.clientX - startX;
+      // Dragging left (negative diff) increases right panel width
+      rightPanelWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth - diff));
+    }
+
+    function onMouseUp() {
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("ongo.rightPanelWidth", rightPanelWidth.toString());
+      }
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    }
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  }
+
   onMount(() => {
-    // Disable right-click globally for that native Gio feel.
+    // Disable right-click globally for that native desktop app feel.
     document.addEventListener("contextmenu", (event) => event.preventDefault());
+    
+    // Load persisted panel width
+    if (typeof localStorage !== "undefined") {
+      const saved = localStorage.getItem("ongo.rightPanelWidth");
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed)) {
+          rightPanelWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, parsed));
+        }
+      }
+    }
+
     initPlayerSync();
 
     // Pause CSS animations while the window is hidden/minimized. WebKitGTK
@@ -80,7 +120,12 @@
 
 <div class="app-root">
   <header class="titlebar">
-    <span class="titlebar-text">OngoPlayer</span>
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-static-element-interactions -->
+    <span class="titlebar-text" on:click={() => navigateTo("home", null, true)}>OngoPlayer</span>
+    <div class="search-container">
+      <SearchBox />
+    </div>
     <button class="settings-btn" on:click={openSettings} title="Settings">
       <Icon name="settings" size={16} />
     </button>
@@ -95,35 +140,40 @@
         on:playTrack={(e) => playerPlayQueueIndex(e.detail)}
         on:pickFolder={playerPickFolder}
         on:appendFolder={playerAppendFolder}
+        on:reorder={(e) => playerReorderQueue(e.detail.from, e.detail.to)}
+        on:removeTrack={(e) => playerRemoveTrack(e.detail)}
+        on:insertYTMTrack={(e) => playerInsertYTMSongAt(
+          e.detail.index,
+          e.detail.track.id,
+          e.detail.track.name,
+          e.detail.track.artist,
+          e.detail.track.album,
+          e.detail.track.lyrics_browse_id,
+          e.detail.track.thumbnail
+        )}
       />
     </aside>
 
     <main class="center-panel">
-      <NowPlaying
-        track={$currentTrack}
-        isPlaying={$isPlaying}
-        cover={$coverUrl}
-        lyrics={$lyrics}
-        position={$position}
-        fontSize={$lyricsFontSize}
-        animations={$animationsEnabled}
-        on:seek={(e) => playerSeekTo(e.detail)}
-      />
+      <CenterPanel />
     </main>
 
-    <!-- Right panel: reserved for DSP and future tabs. -->
-    <aside class="right-panel">
-      <div class="rp-tabs">
-        <button class="rp-tab active" title="Equalizer / DSP">
-          <Icon name="sliders-horizontal" size={16} />
-        </button>
-      </div>
-      <div class="rp-body">
-        <div class="rp-placeholder">
-          <Icon name="sliders-horizontal" size={22} strokeWidth={1.5} />
-          <span>DSP and effects</span>
-          <span class="rp-soon">Coming soon</span>
-        </div>
+    <!-- Resizable player-panel on the right -->
+    <aside class="player-panel" style="width: {rightPanelWidth}px">
+      <!-- Drag handle -->
+      <div class="resize-handle" on:mousedown={startResize}></div>
+      <div class="player-panel-content">
+        <NowPlaying
+          track={$currentTrack}
+          isPlaying={$isPlaying}
+          cover={$coverUrl}
+          lyrics={$lyrics}
+          position={$position}
+          fontSize={$lyricsFontSize}
+          animations={$animationsEnabled}
+          lyricsLoading={$lyricsLoading}
+          on:seek={(e) => playerSeekTo(e.detail)}
+        />
       </div>
     </aside>
   </div>
@@ -138,6 +188,8 @@
       shuffle={$shuffle}
       loopMode={$loopMode}
       animations={$animationsEnabled}
+      isLocked={$loadingIndex !== -1 && $currentTrack && $loadingIndex === $currentTrack.index}
+      cover={$coverUrl}
       on:toggle={() => playerToggle($isPlaying)}
       on:prev={playerPrev}
       on:next={playerNext}
@@ -156,10 +208,14 @@
     rpcEnabled={$rpcEnabled}
     fontSize={$lyricsFontSize}
     animationsEnabled={$animationsEnabled}
+    loopMode={$loopMode}
+    shuffle={$shuffle}
     on:close={closeSettings}
     on:rpc={(e) => setRpcEnabled(e.detail)}
     on:fontSize={(e) => setLyricsFontSize(e.detail)}
     on:animations={(e) => setAnimationsEnabled(e.detail)}
+    on:loop={cycleLoop}
+    on:shuffle={toggleShuffle}
   />
 {/if}
 
@@ -200,11 +256,12 @@
 
   /* Slim monochrome scrollbar. */
   :global(*::-webkit-scrollbar) {
-    width: 8px;
+    width: 6px;
+    height: 6px;
   }
   :global(*::-webkit-scrollbar-thumb) {
     background: var(--surface-3);
-    border-radius: 4px;
+    border-radius: 3px;
   }
   :global(*::-webkit-scrollbar-thumb:hover) {
     background: var(--border-strong);
@@ -221,7 +278,7 @@
   }
 
   .titlebar {
-    height: 40px;
+    height: 44px;
     background-color: var(--surface-1);
     display: flex;
     align-items: center;
@@ -254,6 +311,14 @@
     font-weight: 700;
     letter-spacing: 0.02em;
     color: var(--text);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .search-container {
+    flex: 1;
+    display: flex;
+    justify-content: center;
   }
 
   .main-content {
@@ -282,69 +347,33 @@
     min-width: 0;
   }
 
-  .right-panel {
-    width: 280px;
+  /* Resizable player panel styling */
+  .player-panel {
+    position: relative;
     flex-shrink: 0;
     background-color: var(--surface-1);
     border-left: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    height: 100%;
   }
 
-  .rp-tabs {
-    display: flex;
-    gap: 4px;
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  .rp-tab {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 30px;
-    background: transparent;
-    border: none;
-    border-radius: 7px;
-    color: var(--text-faint);
-    cursor: pointer;
-    transition: color 0.16s ease, background 0.16s ease;
-  }
-
-  .rp-tab:hover {
-    color: var(--text);
-    background: var(--surface-2);
-  }
-
-  .rp-tab.active {
-    color: var(--text);
-    background: var(--surface-3);
-  }
-
-  .rp-body {
+  .player-panel-content {
     flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    overflow: hidden;
     min-height: 0;
+    width: 100%;
   }
 
-  .rp-placeholder {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    color: var(--text-faint);
-    font-size: 12.5px;
-  }
-
-  .rp-soon {
-    font-size: 11px;
-    color: var(--text-faint);
-    opacity: 0.7;
+  .resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -4px;
+    width: 8px;
+    cursor: col-resize;
+    z-index: 10;
   }
 
   .player-bar {
@@ -359,7 +388,7 @@
 
   /* Hide the right panel first when space is tight, then narrow the sidebar. */
   @media (max-width: 900px) {
-    .right-panel {
+    .player-panel {
       display: none;
     }
   }

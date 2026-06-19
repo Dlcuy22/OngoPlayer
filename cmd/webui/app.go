@@ -89,25 +89,31 @@ type TrackInfo struct {
 	HasCover       bool   `json:"hasCover"`
 	LyricsBrowseID string `json:"lyricsBrowseID,omitempty"`
 	YTMSongID      string `json:"ytmSongID,omitempty"`
+	CoverURL       string `json:"coverURL,omitempty"`
 }
 
 type App struct {
 	ctx context.Context
 
-	mu       sync.Mutex
-	engine   *stelleengine.StelleEngine
-	queue    []TrackInfo
-	order    []int // playback order into queue; identity unless shuffled
-	current  int   // index into queue (-1 when nothing selected)
-	volume   int
-	shuffle  bool
-	loopMode LoopMode
+	mu              sync.Mutex
+	engine          *stelleengine.StelleEngine
+	queue           []TrackInfo
+	unshuffledQueue []TrackInfo // Backup of queue before shuffle is turned on
+	order           []int       // playback order into queue; identity unless shuffled
+	current         int         // index into queue (-1 when nothing selected)
+	volume          int
+	shuffle         bool
+	loopMode        LoopMode
 
 	rpc        *discordrpc.Manager // nil when Rich Presence is disabled
 	rpcEnabled bool
 
 	ytmClient  *ytm.Client
 	ytdlpReady bool
+
+	playSessionID     uint64
+	activeDownloads   map[string]chan struct{}
+	activeDownloadsMu sync.Mutex
 }
 
 func NewApp() *App {
@@ -120,10 +126,11 @@ func NewApp() *App {
 		os.Exit(1)
 	}
 	return &App{
-		engine:    engine,
-		current:   -1,
-		volume:    100,
-		ytmClient: ytm.NewClient(),
+		engine:          engine,
+		current:         -1,
+		volume:          100,
+		ytmClient:       ytm.NewClient(),
+		activeDownloads: make(map[string]chan struct{}),
 	}
 }
 
@@ -225,27 +232,13 @@ func scanToTrackInfos(folder string, startIndex int) []TrackInfo {
 	return out
 }
 
-// rebuildOrderLocked recomputes the playback order. Identity unless shuffle is
-// on, in which case it is a random permutation with the current track moved to
-// the front so playback continues from where it is. Caller must hold a.mu.
+// rebuildOrderLocked recomputes the playback order as a simple identity order
+// because shuffle mode physically shuffles the queue itself. Caller must hold a.mu.
 func (a *App) rebuildOrderLocked() {
 	n := len(a.queue)
 	a.order = make([]int, n)
 	for i := range a.order {
 		a.order[i] = i
-	}
-	if a.shuffle && n > 1 {
-		rand.Shuffle(n, func(i, j int) {
-			a.order[i], a.order[j] = a.order[j], a.order[i]
-		})
-		if a.current >= 0 {
-			for i, qi := range a.order {
-				if qi == a.current {
-					a.order[0], a.order[i] = a.order[i], a.order[0]
-					break
-				}
-			}
-		}
 	}
 }
 
@@ -327,6 +320,31 @@ func (a *App) ensureYTMSong(songID string) (string, error) {
 		}
 	}
 
+	// Coordinate concurrent downloads of the same song
+	a.activeDownloadsMu.Lock()
+	ch, downloading := a.activeDownloads[songID]
+	if downloading {
+		a.activeDownloadsMu.Unlock()
+		logInfo("YTM Playback: Waiting for existing download of %s...", songID)
+		<-ch
+		if _, err := os.Stat(readyPath); err == nil {
+			return cachePath, nil
+		}
+		return "", fmt.Errorf("download failed in another thread")
+	}
+
+	// We are the one downloading
+	ch = make(chan struct{})
+	a.activeDownloads[songID] = ch
+	a.activeDownloadsMu.Unlock()
+
+	defer func() {
+		a.activeDownloadsMu.Lock()
+		delete(a.activeDownloads, songID)
+		a.activeDownloadsMu.Unlock()
+		close(ch)
+	}()
+
 	// Cache miss / partial download cleanup
 	logInfo("YTM Playback: Cache miss/partial cache for %s. Downloading...", songID)
 	_ = os.Remove(readyPath)
@@ -377,27 +395,10 @@ func (a *App) ensureYTMSong(songID string) (string, error) {
 		errCh <- nil
 	}()
 
-	// Wait until at least 50KB of data is written or max 6 seconds
-	start := time.Now()
-	for {
-		if time.Since(start) > 6*time.Second {
-			break
-		}
-		select {
-		case err := <-errCh:
-			if err != nil {
-				return "", err
-			}
-			return cachePath, nil
-		default:
-		}
-
-		if info, err := os.Stat(cachePath); err == nil && info.Size() > 50*1024 {
-			break
-		}
-		time.Sleep(250 * time.Millisecond)
+	err := <-errCh
+	if err != nil {
+		return "", err
 	}
-
 	return cachePath, nil
 }
 
@@ -417,18 +418,54 @@ func (a *App) playIndex(index int) error {
 		a.mu.Unlock()
 		return nil
 	}
+
+	a.playSessionID++
+	mySessionID := a.playSessionID
+
 	a.current = index
 	track := a.queue[index]
 	vol := a.volume
 	a.mu.Unlock()
 
-	logInfo("play index=%d title=%q", index, track.Title)
-	
+	logInfo("play index=%d title=%q session=%d", index, track.Title, mySessionID)
+
+	a.mu.Lock()
+	if mySessionID != a.playSessionID {
+		a.mu.Unlock()
+		logInfo("discarding play request for index=%d (stale before resolve)", index)
+		return nil
+	}
+	a.mu.Unlock()
+
+	// Emit track_loading event for this index so UI shows loader
+	runtime.EventsEmit(a.ctx, "track_loading", map[string]any{
+		"index": index,
+	})
+
 	playPath, err := a.resolvePlayPath(track.Path)
 	if err != nil {
 		logInfo("resolve play path failed for %q: %v", track.Path, err)
+		runtime.EventsEmit(a.ctx, "track_loading_finished", map[string]any{
+			"index": index,
+			"error": err.Error(),
+		})
 		return err
 	}
+
+	a.mu.Lock()
+	if mySessionID != a.playSessionID {
+		a.mu.Unlock()
+		logInfo("discarding play request for index=%d (stale after resolve)", index)
+		runtime.EventsEmit(a.ctx, "track_loading_finished", map[string]any{
+			"index": index,
+		})
+		return nil
+	}
+	a.mu.Unlock()
+
+	runtime.EventsEmit(a.ctx, "track_loading_finished", map[string]any{
+		"index": index,
+	})
 
 	err = a.engine.Play(playPath, 0, vol)
 	if err != nil {
@@ -603,6 +640,7 @@ func (a *App) updateRPC(track TrackInfo) {
 		Artist:      track.Artist,
 		Album:       track.Album,
 		Cover:       cover,
+		CoverURL:    track.CoverURL,
 		DurationSec: a.engine.GetDuration(),
 		ElapsedSec:  a.engine.GetPosition(),
 		IsPaused:    a.engine.GetState() == AudioEngine.StatePaused,
@@ -643,9 +681,11 @@ func (a *App) LoadFolder(folder string) ([]TrackInfo, error) {
 	logInfo("load folder %q: %d tracks", folder, len(tracks))
 	a.mu.Lock()
 	a.queue = tracks
+	a.unshuffledQueue = nil
 	a.current = -1
 	a.rebuildOrderLocked()
 	q := a.queue
+	runtime.EventsEmit(a.ctx, "queue_changed", a.queue)
 	a.mu.Unlock()
 	return q, nil
 }
@@ -661,8 +701,10 @@ func (a *App) AppendFolder(folder string) ([]TrackInfo, error) {
 
 	a.mu.Lock()
 	a.queue = append(a.queue, tracks...)
+	a.unshuffledQueue = nil
 	a.rebuildOrderLocked()
 	q := a.queue
+	runtime.EventsEmit(a.ctx, "queue_changed", a.queue)
 	a.mu.Unlock()
 	return q, nil
 }
@@ -713,6 +755,7 @@ func (a *App) PlayFile(filePath string) error {
 	}
 
 	a.mu.Lock()
+	a.playSessionID++
 	a.queue = []TrackInfo{ti}
 	a.current = 0
 	a.rebuildOrderLocked()
@@ -778,12 +821,294 @@ func (a *App) GetVolume() int {
 	return a.volume
 }
 
-// SetShuffle toggles shuffle and regenerates the playback order.
+// SetShuffle toggles shuffle and regenerates the playback order physically.
 func (a *App) SetShuffle(on bool) {
 	a.mu.Lock()
+	if a.shuffle == on {
+		a.mu.Unlock()
+		return
+	}
 	a.shuffle = on
+
+	if on {
+		// Toggle shuffle ON: Shuffle physically
+		if len(a.queue) > 1 {
+			// Save current queue as unshuffled backup
+			a.unshuffledQueue = make([]TrackInfo, len(a.queue))
+			copy(a.unshuffledQueue, a.queue)
+
+			// Extract current track
+			var currentTrack TrackInfo
+			hasCurrent := false
+			if a.current >= 0 && a.current < len(a.queue) {
+				currentTrack = a.queue[a.current]
+				hasCurrent = true
+			}
+
+			// Shuffle the queue
+			// Shuffle the entire queue, but keep current track at index 0
+			// so that playback continues seamlessly from it.
+			var otherTracks []TrackInfo
+			for i, t := range a.queue {
+				if hasCurrent && i == a.current {
+					continue
+				}
+				otherTracks = append(otherTracks, t)
+			}
+
+			// Shuffle other tracks
+			rand.Shuffle(len(otherTracks), func(i, j int) {
+				otherTracks[i], otherTracks[j] = otherTracks[j], otherTracks[i]
+			})
+
+			// Reassemble queue: current track at 0, followed by shuffled tracks
+			if hasCurrent {
+				a.queue = append([]TrackInfo{currentTrack}, otherTracks...)
+				a.current = 0
+			} else {
+				a.queue = otherTracks
+			}
+
+			// Update index field
+			for i := range a.queue {
+				a.queue[i].Index = i
+			}
+		}
+	} else {
+		// Toggle shuffle OFF: Restore original queue
+		if len(a.unshuffledQueue) > 0 {
+			var currentPath string
+			if a.current >= 0 && a.current < len(a.queue) {
+				currentPath = a.queue[a.current].Path
+			}
+
+			a.queue = make([]TrackInfo, len(a.unshuffledQueue))
+			copy(a.queue, a.unshuffledQueue)
+			a.unshuffledQueue = nil
+
+			// Find current track in restored queue
+			a.current = -1
+			if currentPath != "" {
+				for i, t := range a.queue {
+					if t.Path == currentPath {
+						a.current = i
+						break
+					}
+				}
+			}
+
+			// Update index field
+			for i := range a.queue {
+				a.queue[i].Index = i
+			}
+		}
+	}
+
 	a.rebuildOrderLocked()
+	runtime.EventsEmit(a.ctx, "queue_changed", a.queue)
+	if a.current >= 0 && a.current < len(a.queue) {
+		runtime.EventsEmit(a.ctx, "track_changed", &a.queue[a.current])
+	}
 	a.mu.Unlock()
+}
+
+// ReorderQueue moves a track from fromIndex to toIndex in the queue.
+func (a *App) ReorderQueue(fromIndex, toIndex int) []TrackInfo {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if fromIndex < 0 || fromIndex >= len(a.queue) || toIndex < 0 || toIndex >= len(a.queue) || fromIndex == toIndex {
+		return a.queue
+	}
+
+	// Track current playing track
+	var currentTrackPath string
+	if a.current >= 0 && a.current < len(a.queue) {
+		currentTrackPath = a.queue[a.current].Path
+	}
+
+	track := a.queue[fromIndex]
+	// Remove from queue
+	a.queue = append(a.queue[:fromIndex], a.queue[fromIndex+1:]...)
+	// Insert at new position
+	a.queue = append(a.queue[:toIndex], append([]TrackInfo{track}, a.queue[toIndex:]...)...)
+
+	// Update index field
+	for i := range a.queue {
+		a.queue[i].Index = i
+	}
+
+	// Update current index
+	if currentTrackPath != "" {
+		a.current = -1
+		for i, t := range a.queue {
+			if t.Path == currentTrackPath {
+				a.current = i
+				break
+			}
+		}
+	}
+
+	a.rebuildOrderLocked()
+	// Clear backup queue since structure changed
+	a.unshuffledQueue = nil
+
+	runtime.EventsEmit(a.ctx, "queue_changed", a.queue)
+	if a.current >= 0 && a.current < len(a.queue) {
+		runtime.EventsEmit(a.ctx, "track_changed", &a.queue[a.current])
+	}
+	return a.queue
+}
+
+// RemoveFromQueue deletes a track from the queue by index.
+func (a *App) RemoveFromQueue(index int) []TrackInfo {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if index < 0 || index >= len(a.queue) {
+		return a.queue
+	}
+
+	wasPlaying := false
+	if a.current == index {
+		wasPlaying = (a.engine.GetState() == AudioEngine.StatePlaying)
+		_ = a.engine.Stop()
+	}
+
+	a.queue = append(a.queue[:index], a.queue[index+1:]...)
+
+	// Update index field
+	for i := range a.queue {
+		a.queue[i].Index = i
+	}
+
+	if a.current == index {
+		if len(a.queue) == 0 {
+			a.current = -1
+		} else {
+			// Stay at same index, which is now the next song
+			if a.current >= len(a.queue) {
+				a.current = 0
+			}
+			if wasPlaying {
+				// We unlock to call playIndex, because playIndex locks a.mu
+				a.mu.Unlock()
+				_ = a.playIndex(a.current)
+				a.mu.Lock()
+			}
+		}
+	} else if a.current > index {
+		a.current--
+	}
+
+	a.rebuildOrderLocked()
+	// Clear backup queue since structure changed
+	a.unshuffledQueue = nil
+
+	runtime.EventsEmit(a.ctx, "queue_changed", a.queue)
+	if a.current >= 0 && a.current < len(a.queue) {
+		runtime.EventsEmit(a.ctx, "track_changed", &a.queue[a.current])
+	} else {
+		runtime.EventsEmit(a.ctx, "track_changed", nil)
+	}
+	return a.queue
+}
+
+// ClearQueue clears all tracks from the queue.
+func (a *App) ClearQueue() []TrackInfo {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.playSessionID++
+	_ = a.engine.Stop()
+	a.queue = nil
+	a.unshuffledQueue = nil
+	a.current = -1
+	a.rebuildOrderLocked()
+
+	runtime.EventsEmit(a.ctx, "queue_changed", a.queue)
+	runtime.EventsEmit(a.ctx, "track_changed", nil)
+	return a.queue
+}
+
+// PlayYTMSong appends a YTM song to the queue and starts playing it.
+func (a *App) PlayYTMSong(songID, title, artist, album, lyricsBrowseID, coverURL string) error {
+	a.mu.Lock()
+
+	// Create TrackInfo
+	track := TrackInfo{
+		Path:           "ytm:" + songID,
+		Name:           title,
+		Index:          len(a.queue),
+		Title:          title,
+		Artist:         artist,
+		Album:          album,
+		Format:         "YTM",
+		HasCover:       true,
+		LyricsBrowseID: lyricsBrowseID,
+		YTMSongID:      songID,
+		CoverURL:       coverURL,
+	}
+
+	insertIndex := len(a.queue)
+	a.queue = append(a.queue, track)
+	a.rebuildOrderLocked()
+
+	// Clear backup queue since queue structure changed
+	a.unshuffledQueue = nil
+
+	runtime.EventsEmit(a.ctx, "queue_changed", a.queue)
+	a.mu.Unlock()
+
+	return a.playIndex(insertIndex)
+}
+
+// InsertYTMSongAt inserts a YTM song at the specified queue index without playing it.
+func (a *App) InsertYTMSongAt(index int, songID, title, artist, album, lyricsBrowseID, coverURL string) ([]TrackInfo, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if index < 0 {
+		index = 0
+	}
+	if index > len(a.queue) {
+		index = len(a.queue)
+	}
+
+	track := TrackInfo{
+		Path:           "ytm:" + songID,
+		Name:           title,
+		Index:          index,
+		Title:          title,
+		Artist:         artist,
+		Album:          album,
+		Format:         "YTM",
+		HasCover:       true,
+		LyricsBrowseID: lyricsBrowseID,
+		YTMSongID:      songID,
+		CoverURL:       coverURL,
+	}
+
+	// Insert track into a.queue at index
+	if index == len(a.queue) {
+		a.queue = append(a.queue, track)
+	} else {
+		a.queue = append(a.queue[:index], append([]TrackInfo{track}, a.queue[index:]...)...)
+	}
+
+	// Update index field and current track index
+	for i := range a.queue {
+		a.queue[i].Index = i
+	}
+	if a.current >= index {
+		a.current++
+	}
+
+	a.rebuildOrderLocked()
+	a.unshuffledQueue = nil
+
+	runtime.EventsEmit(a.ctx, "queue_changed", a.queue)
+	return a.queue, nil
 }
 
 // GetShuffle returns whether shuffle is enabled.
@@ -915,6 +1240,11 @@ func (a *App) GetYTMRadio(songID string) ([]TrackInfo, error) {
 			albumName = s.Album.Name
 		}
 		
+		var coverURL string
+		if s.Thumbnail != nil {
+			coverURL = s.Thumbnail.GetThumbnailURL(ytm.ThumbnailQualityHigh)
+		}
+
 		out = append(out, TrackInfo{
 			Path:           "ytm:" + s.ID,
 			Name:           s.Name,
@@ -926,6 +1256,7 @@ func (a *App) GetYTMRadio(songID string) ([]TrackInfo, error) {
 			HasCover:       true,
 			LyricsBrowseID: s.LyricsBrowseID,
 			YTMSongID:      s.ID,
+			CoverURL:       coverURL,
 		})
 	}
 	return out, nil

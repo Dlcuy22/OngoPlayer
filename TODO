@@ -1,1 +1,8 @@
 FIX libFLAC not working in windows
+
+WEBUI ROADMAP:
+- Extend YouTube Music search results to support pagination/more than the default results.
+- Fix artist access in search results page (prevent undefined behaviour and nil pointer dereference errors in main.App.GetYTMPlaylist when accessing/playing tracks on the artist page). Plan is to support rendering the artist page and playing tracks directly from their page.
+- Extensive configurable logging (especially on the ytm-go backend side and frontend) to make debugging easier.
+- Persistent application settings using a JSON config file.
+- Add setting for maximum cache folder size, with an algorithm/sweep schedule to delete least recently/frequently played cached YTM tracks when exceeding the limit.

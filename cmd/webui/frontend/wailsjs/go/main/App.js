@@ -6,6 +6,10 @@ export function AppendFolder(arg1) {
   return window['go']['main']['App']['AppendFolder'](arg1);
 }
 
+export function ClearQueue() {
+  return window['go']['main']['App']['ClearQueue']();
+}
+
 export function GetCover(arg1) {
   return window['go']['main']['App']['GetCover'](arg1);
 }
@@ -32,6 +36,30 @@ export function GetShuffle() {
 
 export function GetVolume() {
   return window['go']['main']['App']['GetVolume']();
+}
+
+export function GetYTMArtist(arg1) {
+  return window['go']['main']['App']['GetYTMArtist'](arg1);
+}
+
+export function GetYTMPlaylist(arg1) {
+  return window['go']['main']['App']['GetYTMPlaylist'](arg1);
+}
+
+export function GetYTMRadio(arg1) {
+  return window['go']['main']['App']['GetYTMRadio'](arg1);
+}
+
+export function GetYTMSongLyrics(arg1) {
+  return window['go']['main']['App']['GetYTMSongLyrics'](arg1);
+}
+
+export function GetYTMSuggestions(arg1) {
+  return window['go']['main']['App']['GetYTMSuggestions'](arg1);
+}
+
+export function InsertYTMSongAt(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+  return window['go']['main']['App']['InsertYTMSongAt'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
 
 export function LoadFolder(arg1) {
@@ -62,12 +90,28 @@ export function PlayTrack(arg1) {
   return window['go']['main']['App']['PlayTrack'](arg1);
 }
 
+export function PlayYTMSong(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['PlayYTMSong'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
 export function Prev() {
   return window['go']['main']['App']['Prev']();
 }
 
+export function RemoveFromQueue(arg1) {
+  return window['go']['main']['App']['RemoveFromQueue'](arg1);
+}
+
+export function ReorderQueue(arg1, arg2) {
+  return window['go']['main']['App']['ReorderQueue'](arg1, arg2);
+}
+
 export function Resume() {
   return window['go']['main']['App']['Resume']();
+}
+
+export function SearchYTM(arg1) {
+  return window['go']['main']['App']['SearchYTM'](arg1);
 }
 
 export function Seek(arg1) {

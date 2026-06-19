@@ -30,6 +30,7 @@
   export let position = 0;
   export let fontSize = 16;
   export let animations = true;
+  export let lyricsLoading = false;
 
   const dispatch = createEventDispatcher();
 
@@ -177,6 +178,12 @@
 
       <div class="lyric-pad"></div>
     </div>
+  {:else if lyricsLoading}
+    <div class="lyrics-empty-wrap">
+      <div class="dot-flashing">
+        <span></span><span></span><span></span>
+      </div>
+    </div>
   {:else}
     <div class="lyrics-empty-wrap">
       <span class="lyrics-empty">Lyrics unavailable</span>
@@ -191,15 +198,15 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    padding: 28px 32px;
+    padding: 16px;
     overflow: hidden;
   }
 
   .art {
-    width: 220px;
-    height: 220px;
+    width: 180px;
+    height: 180px;
     flex-shrink: 0;
-    border-radius: 14px;
+    border-radius: 10px;
     background: var(--surface-2);
     border: 1px solid var(--border);
     display: flex;
@@ -207,14 +214,14 @@
     justify-content: center;
     color: var(--text-faint);
     overflow: hidden;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
     transition: color 0.4s ease, border-color 0.4s ease, width 0.3s ease,
       height 0.3s ease;
   }
 
   .art.compact {
-    width: 132px;
-    height: 132px;
+    width: 110px;
+    height: 110px;
   }
 
   .art.playing {
@@ -230,15 +237,16 @@
   }
 
   .meta {
-    margin-top: 20px;
+    margin-top: 14px;
     text-align: center;
-    max-width: 90%;
+    width: 100%;
+    max-width: 100%;
     flex-shrink: 0;
   }
 
   .title {
     margin: 0;
-    font-size: 20px;
+    font-size: 14.5px;
     font-weight: 700;
     color: var(--text);
     white-space: nowrap;
@@ -247,8 +255,8 @@
   }
 
   .subtitle {
-    margin: 6px 0 0;
-    font-size: 13px;
+    margin: 4px 0 0;
+    font-size: 11.5px;
     color: var(--text-faint);
     white-space: nowrap;
     overflow: hidden;
@@ -256,7 +264,7 @@
   }
 
   .lyrics-empty-wrap {
-    margin-top: 32px;
+    margin-top: 24px;
     flex-shrink: 0;
   }
 
