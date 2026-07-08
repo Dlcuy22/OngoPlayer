@@ -277,6 +277,7 @@ export function toggleShuffle() {
   const next = !get(shuffle);
   shuffle.set(next);
   SetShuffle(next);
+  resetCovers(); // ponytail: cover cache keyed by index goes stale after shuffle
 }
 
 // cycleLoop advances loop mode 0 -> 1 -> 2 -> 0 in the backend and store.

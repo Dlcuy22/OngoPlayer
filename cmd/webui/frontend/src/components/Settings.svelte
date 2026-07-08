@@ -1,25 +1,13 @@
 <script>
-  // Settings.svelte is a modal panel for app preferences: Discord RPC,
-  // playback loop/shuffle behavior, and lyrics styling. Organized into tabs.
-  //
-  // Props:
-  //   rpcEnabled: current RPC state
-  //   fontSize: current lyrics font size in px
-  //   animationsEnabled: current UI animation state
-  //   loopMode: current playback loop mode (0 off, 1 all, 2 one)
-  //   shuffle: current shuffle state (boolean)
-
   import { createEventDispatcher } from "svelte";
   import Icon from "./Icon.svelte";
 
   export let rpcEnabled = false;
   export let fontSize = 16;
   export let animationsEnabled = true;
-  export let loopMode = 0;
-  export let shuffle = false;
 
   const dispatch = createEventDispatcher();
-  let activeTab = "general"; // "general" | "playback" | "appearance"
+  let activeTab = "general"; // "general" | "appearance"
 
   function onFont(e) {
     dispatch("fontSize", parseInt(e.target.value, 10));
@@ -31,12 +19,6 @@
 
   function onKey(e) {
     if (e.key === "Escape") dispatch("close");
-  }
-
-  function getLoopModeLabel(mode) {
-    if (mode === 1) return "Loop All";
-    if (mode === 2) return "Loop One";
-    return "Loop Off";
   }
 </script>
 
@@ -69,13 +51,6 @@
       </button>
       <button
         class="tab-item"
-        class:active={activeTab === "playback"}
-        on:click={() => (activeTab = "playback")}
-      >
-        Playback
-      </button>
-      <button
-        class="tab-item"
         class:active={activeTab === "appearance"}
         on:click={() => (activeTab = "appearance")}
       >
@@ -99,38 +74,6 @@
               on:click={() => dispatch("rpc", !rpcEnabled)}
             >
               <span class="knob"></span>
-            </button>
-          </div>
-        </div>
-      {:else if activeTab === "playback"}
-        <div class="tab-pane">
-          <div class="row">
-            <div class="row-text">
-              <span class="row-label">Pre-shuffle Queue</span>
-              <span class="row-desc">Physically shuffle/reorder queue tracks visually</span>
-            </div>
-            <button
-              class="toggle"
-              class:on={shuffle}
-              role="switch"
-              aria-checked={shuffle}
-              on:click={() => dispatch("shuffle")}
-            >
-              <span class="knob"></span>
-            </button>
-          </div>
-
-          <div class="row">
-            <div class="row-text">
-              <span class="row-label">Repeat Mode</span>
-              <span class="row-desc">Current: {getLoopModeLabel(loopMode)}</span>
-            </div>
-            <button
-              class="action-btn"
-              on:click={() => dispatch("loop")}
-            >
-              <Icon name="repeat" size={14} />
-              <span>Cycle Mode</span>
             </button>
           </div>
         </div>

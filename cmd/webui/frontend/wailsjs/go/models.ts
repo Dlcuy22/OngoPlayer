@@ -1,5 +1,19 @@
 export namespace main {
 	
+	export class SearchContinuationResult {
+	    items: any[];
+	    nextToken?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SearchContinuationResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.items = source["items"];
+	        this.nextToken = source["nextToken"];
+	    }
+	}
 	export class TrackInfo {
 	    path: string;
 	    name: string;
@@ -170,6 +184,22 @@ export namespace ytm {
 	        this.playlist_skip_amount = source["playlist_skip_amount"];
 	    }
 	}
+	export class Chip {
+	    name: string;
+	    params?: string;
+	    type?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Chip(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.params = source["params"];
+	        this.type = source["type"];
+	    }
+	}
 	export class MediaItemLayout {
 	    items: any[];
 	    title?: string;
@@ -332,6 +362,7 @@ export namespace ytm {
 	export class SearchCategory {
 	    layout: MediaItemLayout;
 	    filter?: SearchFilter;
+	    continuation?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SearchCategory(source);
@@ -341,6 +372,7 @@ export namespace ytm {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.layout = this.convertValues(source["layout"], MediaItemLayout);
 	        this.filter = this.convertValues(source["filter"], SearchFilter);
+	        this.continuation = source["continuation"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -365,6 +397,7 @@ export namespace ytm {
 	export class SearchResults {
 	    categories: SearchCategory[];
 	    suggested_correction?: string;
+	    chips?: Chip[];
 	
 	    static createFrom(source: any = {}) {
 	        return new SearchResults(source);
@@ -374,6 +407,7 @@ export namespace ytm {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.categories = this.convertValues(source["categories"], SearchCategory);
 	        this.suggested_correction = source["suggested_correction"];
+	        this.chips = this.convertValues(source["chips"], Chip);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

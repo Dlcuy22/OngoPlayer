@@ -57,7 +57,11 @@ export function ReorderQueue(arg1:number,arg2:number):Promise<Array<main.TrackIn
 
 export function Resume():Promise<void>;
 
-export function SearchYTM(arg1:string):Promise<ytm.SearchResults>;
+export function SearchYTM(arg1:string,arg2:string):Promise<ytm.SearchResults>;
+
+export function SearchYTMMore(arg1:string):Promise<main.SearchContinuationResult>;
+
+export function SearchYTMViewMore(arg1:string):Promise<Array<ytm.MediaItem>>;
 
 export function Seek(arg1:number):Promise<void>;
 

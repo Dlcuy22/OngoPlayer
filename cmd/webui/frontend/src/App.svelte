@@ -208,14 +208,10 @@
     rpcEnabled={$rpcEnabled}
     fontSize={$lyricsFontSize}
     animationsEnabled={$animationsEnabled}
-    loopMode={$loopMode}
-    shuffle={$shuffle}
     on:close={closeSettings}
     on:rpc={(e) => setRpcEnabled(e.detail)}
     on:fontSize={(e) => setLyricsFontSize(e.detail)}
     on:animations={(e) => setAnimationsEnabled(e.detail)}
-    on:loop={cycleLoop}
-    on:shuffle={toggleShuffle}
   />
 {/if}
 

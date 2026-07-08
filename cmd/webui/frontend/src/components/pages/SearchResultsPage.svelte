@@ -1,26 +1,80 @@
 <script>
-  // SearchResultsPage.svelte displays YouTube Music and local search results.
-  //
-  // Purpose: Segregates and displays search matches. Displays clickable items
-  // to play songs, navigate to artists, or load playlists/albums.
-  //
-  // Dependencies:
-  //   - lib/playerStore.js: queue store, play actions, navigation helpers
-  //   - wailsjs/go/main/App.js: GetYTMArtist, GetYTMPlaylist, PlayYTMSong
-
   import { queue, currentTrack, playerPlayYTMSong, playerInsertYTMSongAt, navigateTo } from "../../lib/playerStore.js";
-  import { GetYTMArtist, GetYTMPlaylist } from "../../../wailsjs/go/main/App.js";
+  import { GetYTMArtist, GetYTMPlaylist, SearchYTMMore, SearchYTMViewMore, SearchYTM } from "../../../wailsjs/go/main/App.js";
   import Icon from "../Icon.svelte";
   import ContextMenu from "../ContextMenu.svelte";
 
-  export let searchData = null; // { query, results, loading, error }
+  export let searchData = null;
 
   $: query = searchData ? searchData.query : "";
   $: results = searchData ? searchData.results : null;
   $: loading = searchData ? searchData.loading : false;
   $: error = searchData ? searchData.error : null;
 
-  // Filter local queue matches
+  let activeChipIndex = -1;
+  $: chips = results?.chips || [];
+
+  $: activeChip = activeChipIndex >= 0 && activeChipIndex < chips.length
+    ? chips[activeChipIndex]
+    : null;
+
+  $: activeParams = activeChip ? activeChip.params : "";
+  $: isAllView = !activeParams;
+
+  async function handleChipClick(index) {
+    if (index === activeChipIndex) return;
+    activeChipIndex = index;
+    const chip = index >= 0 && index < chips.length ? chips[index] : null;
+    const params = chip ? chip.params : "";
+    if (params === "" && !results?.chips) return;
+    searchData = { query, loading: true, results: null, error: null };
+    try {
+      const newResults = await SearchYTM(query, params);
+      searchData = { query, results: newResults, loading: false, error: null };
+    } catch (err) {
+      searchData = { query, error: err.toString(), loading: false, results: null };
+    }
+  }
+
+  function getItemType(item) {
+    if (item.artists && Array.isArray(item.artists)) {
+      return item.type === "VIDEO" ? "video" : "song";
+    }
+    if (item.subscriber_count !== undefined) return "artist";
+    if (item.type === "ALBUM") return "album";
+    return "playlist";
+  }
+
+  const groupLabels = {
+    song: "Songs",
+    video: "Videos",
+    artist: "Artists",
+    album: "Albums",
+    playlist: "Playlists",
+  };
+
+  $: groupedResults = results && isAllView && results.categories
+    ? buildGroups(results.categories)
+    : [];
+
+  function buildGroups(categories) {
+    const groups = { song: [], video: [], artist: [], album: [], playlist: [] };
+    for (const cat of categories) {
+      if (!cat.layout?.items) continue;
+      for (const item of cat.layout.items) {
+        const t = getItemType(item);
+        if (groups[t]) groups[t].push(item);
+      }
+    }
+    return Object.entries(groups)
+      .filter(([, items]) => items.length > 0)
+      .map(([type, items]) => ({ type, label: groupLabels[type], items }));
+  }
+
+  $: filteredCat = results && !isAllView && results.categories
+    ? results.categories.find(c => c.layout?.items?.length > 0)
+    : null;
+
   $: localMatches = query
     ? $queue.filter(
         (t) =>
@@ -54,7 +108,6 @@
       const data = await GetYTMArtist(artistID);
       navigateTo("artist", { details: data, loading: false });
     } catch (err) {
-      console.error("load artist failed:", err);
       navigateTo("artist", { error: err.toString(), loading: false });
     }
   }
@@ -65,23 +118,21 @@
       const data = await GetYTMPlaylist(playlistID);
       navigateTo("playlist", { details: data, loading: false });
     } catch (err) {
-      console.error("load playlist failed:", err);
       navigateTo("playlist", { error: err.toString(), loading: false });
     }
   }
 
   function getArtistNames(item) {
     if (item.artists && Array.isArray(item.artists)) {
-      return item.artists.map((a) => a.name).join(", ");
+      return item.artists.map((a) => a.name).filter(Boolean).join(", ");
     }
-    return item.artist || "Unknown Artist";
+    return item.artist || "";
   }
 
   function getAlbumName(item) {
     return item.album && item.album.name ? item.album.name : "";
   }
 
-  // Drag and drop handlers
   function handleDragStart(e, item) {
     const trackData = {
       type: "ytm-track",
@@ -98,7 +149,6 @@
     e.dataTransfer.effectAllowed = "copyMove";
   }
 
-  // Context Menu State
   let showMenu = false;
   let menuX = 0;
   let menuY = 0;
@@ -141,6 +191,23 @@
     );
     showMenu = false;
   }
+
+  async function loadMore(cat) {
+    try {
+      if (cat.layout?.viewMore) {
+        const items = await SearchYTMViewMore(cat.layout.viewMore.browseID);
+        cat.layout.items = items;
+        cat.layout.viewMore = null;
+      } else if (cat.continuation) {
+        const result = await SearchYTMMore(cat.continuation);
+        cat.layout.items = [...cat.layout.items, ...result.items];
+        cat.continuation = result.nextToken || "";
+      }
+      searchData = searchData;
+    } catch (err) {
+      console.error("load more failed:", err);
+    }
+  }
 </script>
 
 <div class="search-results-page">
@@ -156,22 +223,31 @@
     </div>
   {:else}
     <div class="search-header">
-      <h2>Search Results for "{query}"</h2>
+      <h2>Results for "{query}"</h2>
     </div>
 
+    {#if chips.length > 0}
+      <div class="chip-bar">
+        <button
+          class="chip"
+          class:chip-active={activeChipIndex === -1}
+          on:click={() => handleChipClick(-1)}>All</button>
+        {#each chips as chip, i}
+          <button
+            class="chip"
+            class:chip-active={i === activeChipIndex}
+            on:click={() => handleChipClick(i)}>{chip.name}</button>
+        {/each}
+      </div>
+    {/if}
+
     <div class="results-content">
-      <!-- Local library matches -->
       {#if localMatches.length > 0}
         <section class="result-section">
-          <h3>Local Library Matches</h3>
+          <h3>Local Library</h3>
           <div class="matches-list">
             {#each localMatches as track}
-              <!-- svelte-ignore a11y-click-events-have-key-events -->
-              <!-- svelte-ignore a11y-no-static-element-interactions -->
-              <div
-                class="result-row local-row"
-                on:click={() => navigateTo("home", null, true)}
-              >
+              <div class="result-row local-row" on:click={() => navigateTo("home", null, true)}>
                 <div class="row-left">
                   <Icon name="music" size={14} strokeWidth={1.5} />
                   <div class="row-meta">
@@ -188,18 +264,16 @@
         </section>
       {/if}
 
-      <!-- YouTube Music Categories -->
-      {#if results && results.categories && results.categories.length > 0}
-        {#each results.categories as cat}
-          {#if cat.layout && cat.layout.items && cat.layout.items.length > 0}
+      <!-- "All" view: grouped by type -->
+      {#if isAllView}
+        {#each groupedResults as group}
+          {#if group.items.length > 0}
             <section class="result-section">
-              <h3>{cat.layout.title || "YouTube Music"}</h3>
+              <h3>{group.label}</h3>
               <div class="matches-list">
-                {#each cat.layout.items as item}
+                {#each group.items as item}
                   {#if item.artists && Array.isArray(item.artists)}
-                    <!-- Song row -->
-                    <!-- svelte-ignore a11y-click-events-have-key-events -->
-                    <!-- svelte-ignore a11y-no-static-element-interactions -->
+                    <!-- Song/Video row -->
                     <div
                       class="result-row song-row"
                       draggable="true"
@@ -211,17 +285,15 @@
                           class="cover-container"
                           on:click|stopPropagation={() =>
                             playerPlayYTMSong(
-                              item.id,
-                              item.name,
-                              getArtistNames(item),
-                              getAlbumName(item),
-                              item.lyrics_browse_id,
-                              formatImgUrl(item.thumbnail)
+                              item.id, item.name,
+                              getArtistNames(item), getAlbumName(item),
+                              item.lyrics_browse_id, formatImgUrl(item.thumbnail)
                             )}
                         >
                           <img
                             src={formatImgUrl(item.thumbnail)}
                             alt={item.name}
+                            loading="lazy"
                             class="track-cover"
                             on:error={(e) => (e.target.style.display = "none")}
                           />
@@ -231,7 +303,7 @@
                         </div>
                         <div class="row-meta">
                           <span class="track-title">{item.name}</span>
-                          <span class="track-artist">{getArtistNames(item)}</span>
+                          <span class="track-artist">{getArtistNames(item) || (item.type === "VIDEO" ? "Video" : "Song")}</span>
                         </div>
                       </div>
                       <div class="row-right">
@@ -243,8 +315,6 @@
                     </div>
                   {:else if item.subscriber_count !== undefined}
                     <!-- Artist row -->
-                    <!-- svelte-ignore a11y-click-events-have-key-events -->
-                    <!-- svelte-ignore a11y-no-static-element-interactions -->
                     <div
                       class="result-row artist-row"
                       on:click={() => handleLoadArtist(item.id)}
@@ -253,12 +323,13 @@
                         <img
                           src={formatImgUrl(item.thumbnail)}
                           alt={item.name}
+                          loading="lazy"
                           class="track-cover round"
                           on:error={(e) => (e.target.style.display = "none")}
                         />
                         <div class="row-meta">
                           <span class="track-title">{item.name}</span>
-                          <span class="track-artist">Artist • {item.subscriber_count.toLocaleString()} subscribers</span>
+                          <span class="track-artist">Artist &bull; {item.subscriber_count.toLocaleString()} subscribers</span>
                         </div>
                       </div>
                       <div class="row-right">
@@ -267,8 +338,6 @@
                     </div>
                   {:else}
                     <!-- Playlist/Album row -->
-                    <!-- svelte-ignore a11y-click-events-have-key-events -->
-                    <!-- svelte-ignore a11y-no-static-element-interactions -->
                     <div
                       class="result-row playlist-row"
                       on:click={() => handleLoadPlaylist(item.id)}
@@ -277,13 +346,14 @@
                         <img
                           src={formatImgUrl(item.thumbnail)}
                           alt={item.name}
+                          loading="lazy"
                           class="track-cover"
                           on:error={(e) => (e.target.style.display = "none")}
                         />
                         <div class="row-meta">
                           <span class="track-title">{item.name}</span>
                           <span class="track-artist">
-                            {item.item_count !== undefined ? `Playlist • ${item.item_count} tracks` : "Album"}
+                            {item.type === "ALBUM" ? "Album" : `Playlist • ${item.item_count || "?"} tracks`}
                           </span>
                         </div>
                       </div>
@@ -297,6 +367,86 @@
             </section>
           {/if}
         {/each}
+      {:else if filteredCat}
+        <!-- Filtered view: single category in grid -->
+        <section class="result-section">
+          <h3>{groupLabels[activeChip?.type?.toLowerCase()] || filteredCat.layout.title || activeChip?.name || "Results"}</h3>
+          <div class="matches-list">
+            {#each filteredCat.layout.items as item}
+              {#if item.artists && Array.isArray(item.artists)}
+                <div
+                  class="result-row song-row"
+                  draggable="true"
+                  on:dragstart={(e) => handleDragStart(e, item)}
+                  on:contextmenu|preventDefault={(e) => handleContextMenu(e, item)}
+                >
+                  <div class="row-left">
+                    <div
+                      class="cover-container"
+                      on:click|stopPropagation={() =>
+                        playerPlayYTMSong(
+                          item.id, item.name,
+                          getArtistNames(item), getAlbumName(item),
+                          item.lyrics_browse_id, formatImgUrl(item.thumbnail)
+                        )}
+                    >
+                      <img src={formatImgUrl(item.thumbnail)} alt={item.name} loading="lazy" class="track-cover"
+                        on:error={(e) => (e.target.style.display = "none")} />
+                      <div class="cover-overlay">
+                        <Icon name="play" size={16} />
+                      </div>
+                    </div>
+                    <div class="row-meta">
+                      <span class="track-title">{item.name}</span>
+                      <span class="track-artist">{getArtistNames(item) || (item.type === "VIDEO" ? "Video" : "Song")}</span>
+                    </div>
+                  </div>
+                  <div class="row-right">
+                    {#if item.is_explicit}
+                      <span class="badge explicit">E</span>
+                    {/if}
+                    <span class="track-duration">{formatDuration(item.duration_ms)}</span>
+                  </div>
+                </div>
+              {:else if item.subscriber_count !== undefined}
+                <div class="result-row artist-row" on:click={() => handleLoadArtist(item.id)}>
+                  <div class="row-left">
+                    <img src={formatImgUrl(item.thumbnail)} alt={item.name} loading="lazy" class="track-cover round"
+                      on:error={(e) => (e.target.style.display = "none")} />
+                    <div class="row-meta">
+                      <span class="track-title">{item.name}</span>
+                      <span class="track-artist">Artist &bull; {item.subscriber_count.toLocaleString()} subscribers</span>
+                    </div>
+                  </div>
+                  <div class="row-right">
+                    <Icon name="chevron-right" size={14} />
+                  </div>
+                </div>
+              {:else}
+                <div class="result-row playlist-row" on:click={() => handleLoadPlaylist(item.id)}>
+                  <div class="row-left">
+                    <img src={formatImgUrl(item.thumbnail)} alt={item.name} loading="lazy" class="track-cover"
+                      on:error={(e) => (e.target.style.display = "none")} />
+                    <div class="row-meta">
+                      <span class="track-title">{item.name}</span>
+                      <span class="track-artist">
+                        {item.type === "ALBUM" ? "Album" : `Playlist • ${item.item_count || "?"} tracks`}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="row-right">
+                    <Icon name="chevron-right" size={14} />
+                  </div>
+                </div>
+              {/if}
+            {/each}
+          </div>
+          {#if filteredCat.layout?.viewMore || filteredCat.continuation}
+            <button class="load-more" on:click={() => loadMore(filteredCat)}>
+              Show more
+            </button>
+          {/if}
+        </section>
       {:else if !localMatches.length}
         <div class="status-box empty">
           <p>No results found for "{query}".</p>
@@ -314,9 +464,7 @@
       { label: "Add to Next", icon: "skip-forward", action: menuAddToNext },
       { label: "Add to Queue", icon: "list-music", action: menuAddToQueue }
     ]}
-    onClose={() => {
-      showMenu = false;
-    }}
+    onClose={() => { showMenu = false; }}
   />
 {/if}
 
@@ -326,39 +474,65 @@
     flex: 1;
     overflow-y: auto;
     background-color: var(--bg);
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
   }
 
   .search-header h2 {
     font-size: 18px;
     font-weight: 600;
-    margin: 0;
+    margin: 0 0 12px;
     color: var(--text);
+  }
+
+  .chip-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+
+  .chip {
+    padding: 4px 14px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text-dim);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+    white-space: nowrap;
+  }
+
+  .chip:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+
+  .chip-active {
+    background: var(--text);
+    color: var(--bg);
+    border-color: var(--text);
   }
 
   .results-content {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 20px;
   }
 
   .result-section {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
   }
 
   .result-section h3 {
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-faint);
+    color: var(--text);
     margin: 0;
-    border-bottom: 1px solid var(--border);
     padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
   }
 
   .matches-list {
@@ -397,6 +571,7 @@
     border-radius: 4px;
     background-color: var(--surface-2);
     object-fit: cover;
+    flex-shrink: 0;
   }
 
   .track-cover.round {
@@ -462,6 +637,7 @@
     align-items: center;
     gap: 10px;
     color: var(--text-dim);
+    flex-shrink: 0;
   }
 
   .track-duration {
@@ -506,12 +682,34 @@
   }
 
   @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
+    to { transform: rotate(360deg); }
+  }
+
+  .load-more {
+    align-self: center;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    margin-top: 4px;
+    transition: background-color 0.16s ease, color 0.16s ease;
+  }
+
+  .load-more:hover {
+    background: var(--surface-hover);
+    color: var(--text);
   }
 
   .status-box.error {
     color: #ef4444;
+  }
+
+  @media (max-width: 600px) {
+    .search-results-page {
+      padding: 16px;
+    }
   }
 </style>

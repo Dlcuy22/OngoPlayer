@@ -110,8 +110,16 @@ export function Resume() {
   return window['go']['main']['App']['Resume']();
 }
 
-export function SearchYTM(arg1) {
-  return window['go']['main']['App']['SearchYTM'](arg1);
+export function SearchYTM(arg1, arg2) {
+  return window['go']['main']['App']['SearchYTM'](arg1, arg2);
+}
+
+export function SearchYTMMore(arg1) {
+  return window['go']['main']['App']['SearchYTMMore'](arg1);
+}
+
+export function SearchYTMViewMore(arg1) {
+  return window['go']['main']['App']['SearchYTMViewMore'](arg1);
 }
 
 export function Seek(arg1) {

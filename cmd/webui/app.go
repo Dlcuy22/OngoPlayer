@@ -135,6 +135,7 @@ func NewApp() *App {
 }
 
 func (a *App) startup(ctx context.Context) {
+	logInfo("ytm-go version %s", ytm.Version)
 	a.ctx = ctx
 	if a.engine == nil {
 		return
@@ -1173,11 +1174,24 @@ func (a *App) GetQueue() []TrackInfo {
 }
 
 // SearchYTM searches for music on YouTube Music.
-func (a *App) SearchYTM(query string) (*ytm.SearchResults, error) {
-	logInfo("YTM Search: %q", query)
+func (a *App) SearchYTM(query string, params string) (*ytm.SearchResults, error) {
+	logInfo("YTM Search: %q (params=%q)", query, params)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	return a.ytmClient.Search(ctx, query, "", false)
+	results, err := a.ytmClient.Search(ctx, query, params, false)
+	if results != nil {
+		var chipNames []string
+		for _, ch := range results.Chips {
+			chipNames = append(chipNames, ch.Name)
+		}
+		catCount := len(results.Categories)
+		totalItems := 0
+		for _, cat := range results.Categories {
+			totalItems += len(cat.Layout.Items)
+		}
+		logInfo("search: %d categories, %d items total, chips=%v", catCount, totalItems, chipNames)
+	}
+	return results, err
 }
 
 // GetYTMSuggestions fetches real-time autocomplete suggestions from YouTube Music.
@@ -1260,6 +1274,30 @@ func (a *App) GetYTMRadio(songID string) ([]TrackInfo, error) {
 		})
 	}
 	return out, nil
+}
+
+// SearchContinuationResult holds the next page of search items and the next continuation token.
+type SearchContinuationResult struct {
+	Items        []ytm.MediaItem `json:"items"`
+	NextToken    string          `json:"nextToken,omitempty"`
+}
+
+// SearchYTMMore loads the next page of search results for a continuation token.
+func (a *App) SearchYTMMore(continuation string) (*SearchContinuationResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	items, nextToken, err := a.ytmClient.GetSearchContinuation(ctx, continuation)
+	if err != nil {
+		return nil, err
+	}
+	return &SearchContinuationResult{Items: items, NextToken: nextToken}, nil
+}
+
+// SearchYTMViewMore loads all items for a browse ID (typically from a carousel's viewMore).
+func (a *App) SearchYTMViewMore(browseID string) ([]ytm.MediaItem, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return a.ytmClient.GetGenericFeedViewMore(ctx, browseID)
 }
 
 // GetYTMSongLyrics retrieves song lyrics in plaintext.

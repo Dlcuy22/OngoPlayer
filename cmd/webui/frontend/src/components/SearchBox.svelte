@@ -48,7 +48,7 @@
     navigateTo("search", { query: q, loading: true });
 
     try {
-      const results = await SearchYTM(q);
+      const results = await SearchYTM(q, "");
       navigateTo("search", { query: q, results: results, loading: false });
     } catch (err) {
       console.error("search failed:", err);

@@ -1,5 +1,3 @@
-FIX libFLAC not working in windows
-
 WEBUI ROADMAP:
 - Extend YouTube Music search results to support pagination/more than the default results.
 - Fix artist access in search results page (prevent undefined behaviour and nil pointer dereference errors in main.App.GetYTMPlaylist when accessing/playing tracks on the artist page). Plan is to support rendering the artist page and playing tracks directly from their page.

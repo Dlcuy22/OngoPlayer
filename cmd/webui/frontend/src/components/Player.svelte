@@ -403,22 +403,11 @@
     border-radius: 50%;
     background: var(--text);
     border: none;
-    box-shadow: 0 0 0 3px var(--bg);
     transition: transform 0.14s ease;
   }
 
   input[type="range"]:hover::-webkit-slider-thumb {
     transform: scale(1.2);
-  }
-
-  /* Volume thumb: no black separation ring at rest; restore it on hover so the
-     knob stays legible while dragging over the white filled portion. */
-  .vol-wrap input[type="range"]::-webkit-slider-thumb {
-    box-shadow: none;
-  }
-
-  .vol-wrap input[type="range"]:hover::-webkit-slider-thumb {
-    box-shadow: 0 0 0 3px var(--bg);
   }
 
   input[type="range"]::-moz-range-thumb {
