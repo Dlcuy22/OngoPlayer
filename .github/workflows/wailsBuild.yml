@@ -56,7 +56,7 @@ jobs:
       run:  make build
     - name: get runtime dependencies
       run: go run tools/download_win_deps.go
-      
+
     - name: Compress Build Artifacts
       uses: somaz94/compress-decompress@v1
       with:
@@ -64,7 +64,7 @@ jobs:
         path: 'build/bin'
         output: 'build-windows.zip'
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: debug-${{ runner.os }}
         path: build-windows.zip
