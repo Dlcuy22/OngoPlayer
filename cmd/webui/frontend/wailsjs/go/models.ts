@@ -139,6 +139,7 @@ export namespace ytm {
 	}
 	export class Artist {
 	    id: string;
+	    type?: string;
 	    name?: string;
 	    description?: string;
 	    thumbnail?: ThumbnailProvider;
@@ -155,6 +156,7 @@ export namespace ytm {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
+	        this.type = source["type"];
 	        this.name = source["name"];
 	        this.description = source["description"];
 	        this.thumbnail = this.convertValues(source["thumbnail"], ThumbnailProvider);

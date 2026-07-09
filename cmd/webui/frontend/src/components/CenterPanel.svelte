@@ -15,6 +15,7 @@
     playlistDetail,
     navigateTo,
     navigateBack,
+    navigateBackTo,
   } from "../lib/playerStore.js";
 
   import HomePage from "./pages/HomePage.svelte";
@@ -83,8 +84,7 @@
       (raw) => raw.label === bc.label && raw.view === bc.view
     );
     if (rawIndex === -1 || rawIndex === rawBreadcrumbs.length - 1) return;
-    navigationStack.set($navigationStack.slice(0, rawIndex));
-    navigateTo(bc.view, bc.data);
+    navigateBackTo(rawIndex);
   }
 </script>
 

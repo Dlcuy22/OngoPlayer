@@ -1,7 +1,2 @@
-- fix frontend state management bugs like the cover art getting swapped(+n removed track) when removing a track 
-- add proper dev build for windows that open console for log debugging, currenrly the make build version compile with -mwindows so it doesnt open any browser console. will add build-dev-win for debug build
-- improve engine and frontend communication to not cause unexpected bugs like leaked state and more
-- Extend YouTube Music search results to support pagination/more than the default results.
-- Fix artist access in search results page (prevent undefined behaviour and nil pointer dereference errors in main.App.GetYTMPlaylist when accessing/playing tracks on the artist page). Plan is to support rendering the artist page and playing tracks directly from their page.
 - Persistent application settings using a JSON config file.
 - Add setting for maximum cache folder size, with an algorithm/sweep schedule to delete least recently/frequently played cached YTM tracks when exceeding the limit.

@@ -11,7 +11,7 @@ require (
 	github.com/ebitengine/purego v0.10.0
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/ulikunitz/xz v0.5.15
-	github.com/wailsapp/wails/v2 v2.11.0
+	github.com/wailsapp/wails/v2 v2.12.0
 	golang.org/x/exp/shiny v0.0.0-20260410095643-746e56fc9e2f
 	golang.org/x/image v0.39.0
 	golang.org/x/sys v0.43.0
@@ -20,6 +20,7 @@ require (
 
 require (
 	gioui.org/shader v1.0.8 // indirect
+	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-text/typesetting v0.3.0 // indirect

@@ -538,6 +538,12 @@ func (a *App) resolveLyrics(track TrackInfo) {
 
 	logInfo("lyrics: resolving lyric for %+v", track)
 	musicDir := filepath.Dir(track.Path)
+	if strings.HasPrefix(track.Path, "ytm:") {
+		musicDir = "cache"
+	}
+	if absLyricDir, err := filepath.Abs(filepath.Join(musicDir, "lyrics")); err == nil {
+		logInfo("lyrics: cache lyric directory path: %s", absLyricDir)
+	}
 
 	emit := func(lines []lyrics.Line, source string) {
 		out := make([]LyricLine, 0, len(lines))

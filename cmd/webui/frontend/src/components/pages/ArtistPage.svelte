@@ -48,7 +48,7 @@
 
   function isSong(item) {
     // Items with duration or in Popular Songs shelf are typically songs
-    return item.duration_ms !== undefined || item.lyrics_browse_id !== undefined;
+    return item.type === "SONG" || item.type === "VIDEO" || item.duration_ms !== undefined || item.lyrics_browse_id !== undefined;
   }
 </script>
 

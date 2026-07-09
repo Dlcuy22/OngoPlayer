@@ -510,3 +510,20 @@ export function navigateBack() {
   else if (prev.view === "artist") artistDetail.set(prev.data);
   else if (prev.view === "playlist") playlistDetail.set(prev.data);
 }
+
+/*
+navigateBackTo goes back to a specific index in the navigation stack.
+
+	params:
+	      index: target index in the navigationStack
+*/
+export function navigateBackTo(index) {
+  const stack = get(navigationStack);
+  if (index < 0 || index >= stack.length) return;
+  const target = stack[index];
+  navigationStack.set(stack.slice(0, index));
+  activeView.set(target.view);
+  if (target.view === "search") searchResults.set(target.data);
+  else if (target.view === "artist") artistDetail.set(target.data);
+  else if (target.view === "playlist") playlistDetail.set(target.data);
+}

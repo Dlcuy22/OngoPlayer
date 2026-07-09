@@ -313,7 +313,7 @@
                         <span class="track-duration">{formatDuration(item.duration_ms)}</span>
                       </div>
                     </div>
-                  {:else if item.subscriber_count !== undefined}
+                  {:else if item.type === "ARTIST" || item.subscriber_count !== undefined}
                     <!-- Artist row -->
                     <div
                       class="result-row artist-row"
@@ -329,7 +329,12 @@
                         />
                         <div class="row-meta">
                           <span class="track-title">{item.name}</span>
-                          <span class="track-artist">Artist &bull; {item.subscriber_count.toLocaleString()} subscribers</span>
+                          <span class="track-artist">
+                            Artist
+                            {#if item.subscriber_count !== undefined && item.subscriber_count !== null}
+                              &bull; {item.subscriber_count.toLocaleString()} subscribers
+                            {/if}
+                          </span>
                         </div>
                       </div>
                       <div class="row-right">
@@ -408,14 +413,19 @@
                     <span class="track-duration">{formatDuration(item.duration_ms)}</span>
                   </div>
                 </div>
-              {:else if item.subscriber_count !== undefined}
+              {:else if item.type === "ARTIST" || item.subscriber_count !== undefined}
                 <div class="result-row artist-row" on:click={() => handleLoadArtist(item.id)}>
                   <div class="row-left">
                     <img src={formatImgUrl(item.thumbnail)} alt={item.name} loading="lazy" class="track-cover round"
                       on:error={(e) => (e.target.style.display = "none")} />
                     <div class="row-meta">
                       <span class="track-title">{item.name}</span>
-                      <span class="track-artist">Artist &bull; {item.subscriber_count.toLocaleString()} subscribers</span>
+                      <span class="track-artist">
+                        Artist
+                        {#if item.subscriber_count !== undefined && item.subscriber_count !== null}
+                          &bull; {item.subscriber_count.toLocaleString()} subscribers
+                        {/if}
+                      </span>
                     </div>
                   </div>
                   <div class="row-right">
