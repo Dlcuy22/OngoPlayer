@@ -22,6 +22,14 @@ DSP_FLAGS  :=
 WTAGS     :=
 endif
 
+ifeq ($(UNAME_S),Windows_NT)
+APP_NAME  := OngoPlayer.exe
+DSP_EXT    := .dll
+DSP_TARGET := stelle_dsp$(DSP_EXT)
+DSP_FLAGS  :=
+WTAGS     :=
+endif
+
 ifeq ($(UNAME_S),Darwin)
 APP_NAME  := OngoPlayer
 DSP_EXT    := .dylib

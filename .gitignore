@@ -13,3 +13,4 @@ reference/
 cmd/webui/cache
 cmd/webui/lyrics
 build/bin
+AGENTS.md
