@@ -6,6 +6,10 @@ export function AppendFolder(arg1) {
   return window['go']['main']['App']['AppendFolder'](arg1);
 }
 
+export function CancelAllDownloads() {
+  return window['go']['main']['App']['CancelAllDownloads']();
+}
+
 export function ClearQueue() {
   return window['go']['main']['App']['ClearQueue']();
 }

@@ -18,7 +18,7 @@ var probedLibs = []codecLib{
 	{Name: "libvorbisfile", Format: "Vorbis", Files: libName("libvorbisfile", "so.3", "3.dll", "dylib")},
 	{Name: "libmpg123", Format: "MP3", Files: libName("libmpg123", "so.0", "0.dll", "dylib")},
 	{Name: "libFLAC", Format: "FLAC", Files: libNameFLAC()},
-	{Name: "stelle_dsp (C DSP)", Format: "DSP", Files: libName("stelle_dsp", "so", "dll", "dylib")},
+	{Name: "stelle_dsp (C DSP)", Format: "DSP", Files: libNameDSP()},
 }
 
 func libName(base, linuxSuffix, winSuffix, darwinSuffix string) []string {
@@ -41,6 +41,18 @@ func libNameFLAC() []string {
 		return []string{"libFLAC.dll", "libFLAC-14.dll", "libFLAC-12.dll"}
 	case "darwin":
 		return []string{"libFLAC.dylib"}
+	}
+	return nil
+}
+
+func libNameDSP() []string {
+	switch runtime.GOOS {
+	case "linux", "freebsd":
+		return []string{"stelle_dsp.so"}
+	case "windows":
+		return []string{"stelle_dsp.dll"}
+	case "darwin":
+		return []string{"stelle_dsp.dylib"}
 	}
 	return nil
 }

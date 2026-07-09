@@ -5,6 +5,8 @@ import {ytm} from '../models';
 
 export function AppendFolder(arg1:string):Promise<Array<main.TrackInfo>>;
 
+export function CancelAllDownloads():Promise<void>;
+
 export function ClearQueue():Promise<Array<main.TrackInfo>>;
 
 export function GetCover(arg1:number):Promise<string>;

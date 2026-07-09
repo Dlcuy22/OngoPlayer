@@ -124,11 +124,13 @@ export function initPlayerSync() {
     loadingIndex.set(-1);
   });
 
-  EventsOn("track_changed", (track) => {
+  EventsOn("track_changed", (payload) => {
     loadingIndex.set(-1);
+    const track = payload ? payload.track : null;
+    const playing = payload ? payload.playing : false;
     if (track) {
       currentTrack.set(track);
-      isPlaying.set(true);
+      isPlaying.set(playing);
       position.set(0);
       lyrics.set([]); // clear stale lyrics until the new ones arrive
       loadCoverFor(track);
@@ -147,13 +149,24 @@ export function initPlayerSync() {
     if (!data) return;
     // Ignore results for a track that is no longer active (late API responses).
     const cur = get(currentTrack);
-    if (cur && cur.index !== data.index) return;
+    if (cur && cur.path !== data.path) return;
     lyrics.set(Array.isArray(data.lines) ? data.lines : []);
     lyricsLoading.set(false);
   });
 
   EventsOn("queue_changed", (tracks) => {
     queue.set(tracks || []);
+    // Evict old entries from coverCache that are no longer in the queue.
+    if (tracks && tracks.length > 0) {
+      const activePaths = new Set(tracks.map(t => t.path));
+      for (const key of coverCache.keys()) {
+        if (!activePaths.has(key)) {
+          coverCache.delete(key);
+        }
+      }
+    } else {
+      coverCache.clear();
+    }
   });
 }
 
@@ -177,18 +190,19 @@ function loadCoverFor(track) {
     coverUrl.set("");
     return;
   }
+  const path = track.path;
   const idx = track.index;
-  if (coverCache.has(idx)) {
-    coverUrl.set(coverCache.get(idx));
+  if (coverCache.has(path)) {
+    coverUrl.set(coverCache.get(path));
     return;
   }
   // Clear stale art while the new one loads.
   coverUrl.set("");
   GetCover(idx).then((url) => {
-    coverCache.set(idx, url || "");
+    coverCache.set(path, url || "");
     // Only apply if this track is still the active one.
     const cur = get(currentTrack);
-    if (cur && cur.index === idx) {
+    if (cur && cur.path === path) {
       coverUrl.set(url || "");
     }
   });
@@ -206,13 +220,16 @@ Used by the tracklist for mini thumbnails.
 */
 export function getCover(index, hasCover) {
   const q = get(queue);
-  if (q && q[index] && q[index].coverURL) {
-    return Promise.resolve(q[index].coverURL);
+  if (!q || !q[index]) return Promise.resolve("");
+  const track = q[index];
+  if (track.coverURL) {
+    return Promise.resolve(track.coverURL);
   }
   if (!hasCover) return Promise.resolve("");
-  if (coverCache.has(index)) return Promise.resolve(coverCache.get(index));
+  const path = track.path;
+  if (coverCache.has(path)) return Promise.resolve(coverCache.get(path));
   return GetCover(index).then((url) => {
-    coverCache.set(index, url || "");
+    coverCache.set(path, url || "");
     return url || "";
   });
 }
@@ -344,19 +361,14 @@ function resetCovers() {
 playerPickFolder opens a native picker and REPLACES the queue.
 */
 export function playerPickFolder() {
-  PickFolder().then((tracks) => {
-    resetCovers();
-    queue.set(tracks || []);
-  });
+  PickFolder();
 }
 
 /*
 playerAppendFolder opens a native picker and APPENDS to the queue.
 */
 export function playerAppendFolder() {
-  PickFolderAppend().then((tracks) => {
-    queue.set(tracks || []);
-  });
+  PickFolderAppend();
 }
 
 /*
@@ -366,52 +378,42 @@ playerPlayQueueIndex plays a specific track from the current queue.
 	      index: array index of the track in the queue
 */
 export function playerPlayQueueIndex(index) {
-  PlayTrack(index).then(() => isPlaying.set(true));
+  PlayTrack(index);
 }
 
 /*
 playerRemoveTrack deletes a track from the queue by index.
 */
 export function playerRemoveTrack(index) {
-  RemoveFromQueue(index).then((tracks) => {
-    queue.set(tracks || []);
-  });
+  RemoveFromQueue(index);
 }
 
 /*
 playerReorderQueue moves a track from fromIndex to toIndex.
 */
 export function playerReorderQueue(fromIndex, toIndex) {
-  ReorderQueue(fromIndex, toIndex).then((tracks) => {
-    queue.set(tracks || []);
-  });
+  ReorderQueue(fromIndex, toIndex);
 }
 
 /*
 playerClearQueue clears all tracks from the queue.
 */
 export function playerClearQueue() {
-  ClearQueue().then((tracks) => {
-    queue.set(tracks || []);
-  });
+  ClearQueue();
 }
 
 /*
 playerPlayYTMSong appends a YTM song to the queue and starts playing it.
 */
 export function playerPlayYTMSong(songID, title, artist, album, lyricsBrowseID, coverURL) {
-  PlayYTMSong(songID, title, artist, album, lyricsBrowseID || "", coverURL || "").then(() => {
-    isPlaying.set(true);
-  });
+  PlayYTMSong(songID, title, artist, album, lyricsBrowseID || "", coverURL || "");
 }
 
 /*
 playerInsertYTMSongAt inserts a YTM song at the specified queue index without playing.
 */
 export function playerInsertYTMSongAt(index, songID, title, artist, album, lyricsBrowseID, coverURL) {
-  InsertYTMSongAt(index, songID, title, artist, album, lyricsBrowseID || "", coverURL || "").then((tracks) => {
-    queue.set(tracks || []);
-  });
+  InsertYTMSongAt(index, songID, title, artist, album, lyricsBrowseID || "", coverURL || "");
 }
 
 /*

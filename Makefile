@@ -51,7 +51,11 @@ build: clean build-dsp
 	cd $(WEBUI_DIR) && wails build $(WTAGS) -o $(APP_NAME)
 	mv $(WEBUI_DIR)/build/bin/* $(BUILD_DIR)/
 
-.PHONY: default all build
+build-dev-win: clean build-dsp
+	cd $(WEBUI_DIR) && wails build $(WTAGS) -debug -windowsconsole -o $(APP_NAME)
+	mv $(WEBUI_DIR)/build/bin/* $(BUILD_DIR)/
+
+.PHONY: default all build build-dev-win
 
 .PHONY: clean
 clean:

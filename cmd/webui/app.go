@@ -58,6 +58,10 @@ func logDebug(msg string, args ...any) {
 	log.Debug(fmt.Sprintf(msg, args...))
 }
 
+func logError(msg string, args ...any) {
+	log.Error(fmt.Sprintf(msg, args...))
+}
+
 // LoopMode enumerates the repeat behavior at end-of-track.
 type LoopMode int
 
@@ -87,6 +91,17 @@ type TrackInfo struct {
 	CoverURL       string `json:"coverURL,omitempty"`
 }
 
+type TrackChangedPayload struct {
+	Track   *TrackInfo `json:"track"`
+	Playing bool       `json:"playing"`
+}
+
+type activeDownload struct {
+	done     chan struct{}
+	cancel   context.CancelFunc
+	filePath string
+}
+
 type App struct {
 	ctx context.Context
 
@@ -107,7 +122,7 @@ type App struct {
 	ytdlpReady bool
 
 	playSessionID     uint64
-	activeDownloads   map[string]chan struct{}
+	activeDownloads   map[string]*activeDownload
 	activeDownloadsMu sync.Mutex
 }
 
@@ -125,7 +140,7 @@ func NewApp() *App {
 		current:         -1,
 		volume:          100,
 		ytmClient:       ytm.NewClient(),
-		activeDownloads: make(map[string]chan struct{}),
+		activeDownloads: make(map[string]*activeDownload),
 	}
 }
 
@@ -318,11 +333,11 @@ func (a *App) ensureYTMSong(songID string) (string, error) {
 
 	// Coordinate concurrent downloads of the same song
 	a.activeDownloadsMu.Lock()
-	ch, downloading := a.activeDownloads[songID]
+	dlState, downloading := a.activeDownloads[songID]
 	if downloading {
 		a.activeDownloadsMu.Unlock()
 		logInfo("YTM Playback: Waiting for existing download of %s...", songID)
-		<-ch
+		<-dlState.done
 		if _, err := os.Stat(readyPath); err == nil {
 			return cachePath, nil
 		}
@@ -330,15 +345,21 @@ func (a *App) ensureYTMSong(songID string) (string, error) {
 	}
 
 	// We are the one downloading
-	ch = make(chan struct{})
-	a.activeDownloads[songID] = ch
+	ctx, cancel := context.WithCancel(context.Background())
+	dlState = &activeDownload{
+		done:     make(chan struct{}),
+		cancel:   cancel,
+		filePath: cachePath,
+	}
+	a.activeDownloads[songID] = dlState
 	a.activeDownloadsMu.Unlock()
 
 	defer func() {
 		a.activeDownloadsMu.Lock()
 		delete(a.activeDownloads, songID)
 		a.activeDownloadsMu.Unlock()
-		close(ch)
+		cancel()
+		close(dlState.done)
 	}()
 
 	// Cache miss / partial download cleanup
@@ -375,7 +396,7 @@ func (a *App) ensureYTMSong(songID string) (string, error) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := dl.Run(context.Background(), "https://www.youtube.com/watch?v="+songID)
+		_, err := dl.Run(ctx, "https://www.youtube.com/watch?v="+songID)
 		if err != nil {
 			logInfo("ytdlp download error for %s: %v", songID, err)
 			errCh <- err
@@ -393,6 +414,7 @@ func (a *App) ensureYTMSong(songID string) (string, error) {
 
 	err := <-errCh
 	if err != nil {
+		_ = os.Remove(cachePath)
 		return "", err
 	}
 	return cachePath, nil
@@ -440,7 +462,7 @@ func (a *App) playIndex(index int) error {
 
 	playPath, err := a.resolvePlayPath(track.Path)
 	if err != nil {
-		logInfo("resolve play path failed for %q: %v", track.Path, err)
+		logError("resolve play path failed for %q: %v", track.Path, err)
 		runtime.EventsEmit(a.ctx, "track_loading_finished", map[string]any{
 			"index": index,
 			"error": err.Error(),
@@ -465,10 +487,13 @@ func (a *App) playIndex(index int) error {
 
 	err = a.engine.Play(playPath, 0, vol)
 	if err != nil {
-		logInfo("play failed for %q (resolved: %q): %v", track.Path, playPath, err)
+		logError("play failed for %q (resolved: %q): %v", track.Path, playPath, err)
 		return err
 	}
-	runtime.EventsEmit(a.ctx, "track_changed", a.GetCurrentTrack())
+	runtime.EventsEmit(a.ctx, "track_changed", TrackChangedPayload{
+		Track:   a.GetCurrentTrack(),
+		Playing: true,
+	})
 	go a.resolveLyrics(track)
 	go a.updateRPC(track)
 	return nil
@@ -493,6 +518,7 @@ func (a *App) resolveLyrics(track TrackInfo) {
 		}
 		runtime.EventsEmit(a.ctx, "lyrics_loaded", map[string]any{
 			"index":  track.Index,
+			"path":   track.Path,
 			"source": source,
 			"lines":  out,
 		})
@@ -768,7 +794,10 @@ func (a *App) PlayFile(filePath string) error {
 		}
 	}
 	if err == nil {
-		runtime.EventsEmit(a.ctx, "track_changed", a.GetCurrentTrack())
+		runtime.EventsEmit(a.ctx, "track_changed", TrackChangedPayload{
+			Track:   a.GetCurrentTrack(),
+			Playing: true,
+		})
 		go a.resolveLyrics(ti)
 		go a.updateRPC(ti)
 	}
@@ -903,7 +932,11 @@ func (a *App) SetShuffle(on bool) {
 	a.rebuildOrderLocked()
 	runtime.EventsEmit(a.ctx, "queue_changed", a.queue)
 	if a.current >= 0 && a.current < len(a.queue) {
-		runtime.EventsEmit(a.ctx, "track_changed", &a.queue[a.current])
+		playing := a.engine.GetState() == AudioEngine.StatePlaying
+		runtime.EventsEmit(a.ctx, "track_changed", TrackChangedPayload{
+			Track:   &a.queue[a.current],
+			Playing: playing,
+		})
 	}
 	a.mu.Unlock()
 }
@@ -951,7 +984,11 @@ func (a *App) ReorderQueue(fromIndex, toIndex int) []TrackInfo {
 
 	runtime.EventsEmit(a.ctx, "queue_changed", a.queue)
 	if a.current >= 0 && a.current < len(a.queue) {
-		runtime.EventsEmit(a.ctx, "track_changed", &a.queue[a.current])
+		playing := a.engine.GetState() == AudioEngine.StatePlaying
+		runtime.EventsEmit(a.ctx, "track_changed", TrackChangedPayload{
+			Track:   &a.queue[a.current],
+			Playing: playing,
+		})
 	}
 	return a.queue
 }
@@ -978,6 +1015,7 @@ func (a *App) RemoveFromQueue(index int) []TrackInfo {
 		a.queue[i].Index = i
 	}
 
+	playStarted := false
 	if a.current == index {
 		if len(a.queue) == 0 {
 			a.current = -1
@@ -991,6 +1029,7 @@ func (a *App) RemoveFromQueue(index int) []TrackInfo {
 				a.mu.Unlock()
 				_ = a.playIndex(a.current)
 				a.mu.Lock()
+				playStarted = true
 			}
 		}
 	} else if a.current > index {
@@ -1002,10 +1041,19 @@ func (a *App) RemoveFromQueue(index int) []TrackInfo {
 	a.unshuffledQueue = nil
 
 	runtime.EventsEmit(a.ctx, "queue_changed", a.queue)
-	if a.current >= 0 && a.current < len(a.queue) {
-		runtime.EventsEmit(a.ctx, "track_changed", &a.queue[a.current])
-	} else {
-		runtime.EventsEmit(a.ctx, "track_changed", nil)
+	if !playStarted {
+		if a.current >= 0 && a.current < len(a.queue) {
+			playing := a.engine.GetState() == AudioEngine.StatePlaying
+			runtime.EventsEmit(a.ctx, "track_changed", TrackChangedPayload{
+				Track:   &a.queue[a.current],
+				Playing: playing,
+			})
+		} else {
+			runtime.EventsEmit(a.ctx, "track_changed", TrackChangedPayload{
+				Track:   nil,
+				Playing: false,
+			})
+		}
 	}
 	return a.queue
 }
@@ -1023,7 +1071,10 @@ func (a *App) ClearQueue() []TrackInfo {
 	a.rebuildOrderLocked()
 
 	runtime.EventsEmit(a.ctx, "queue_changed", a.queue)
-	runtime.EventsEmit(a.ctx, "track_changed", nil)
+	runtime.EventsEmit(a.ctx, "track_changed", TrackChangedPayload{
+		Track:   nil,
+		Playing: false,
+	})
 	return a.queue
 }
 
@@ -1301,5 +1352,16 @@ func (a *App) GetYTMSongLyrics(lyricsBrowseID string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return a.ytmClient.GetSongLyrics(ctx, lyricsBrowseID)
+}
+
+func (a *App) CancelAllDownloads() {
+	a.activeDownloadsMu.Lock()
+	defer a.activeDownloadsMu.Unlock()
+
+	logInfo("gracefully cancelling %d active download(s)...", len(a.activeDownloads))
+	for _, dlState := range a.activeDownloads {
+		dlState.cancel()
+		_ = os.Remove(dlState.filePath)
+	}
 }
 
