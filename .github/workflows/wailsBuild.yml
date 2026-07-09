@@ -68,6 +68,15 @@ jobs:
     #- name: upx
     #  run: choco install upx  
       
+    - name: Stage SDL3.dll for build
+      shell: pwsh
+      run: |
+        $url = "https://github.com/libsdl-org/SDL/releases/download/release-3.4.4/SDL3-3.4.4-win32-x64.zip"
+        $zip = "$env:TEMP\SDL3.zip"
+        Invoke-WebRequest -Uri $url -OutFile $zip
+        Expand-Archive -Path $zip -DestinationPath "$env:TEMP\SDL3" -Force
+        Copy-Item "$env:TEMP\SDL3\SDL3.dll" "cmd\webui\SDL3.dll" -Force
+
     - name: build
       run:  make build
     - name: get runtime dependencies
