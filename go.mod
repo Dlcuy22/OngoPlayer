@@ -10,7 +10,7 @@ require (
 	github.com/dlcuy22/ytm-go v1.0.1
 	github.com/ebitengine/purego v0.10.0
 	github.com/godbus/dbus/v5 v5.2.2
-	github.com/lrstanley/go-ytdlp v1.3.5
+	github.com/ulikunitz/xz v0.5.15
 	github.com/wailsapp/wails/v2 v2.11.0
 	golang.org/x/exp/shiny v0.0.0-20260410095643-746e56fc9e2f
 	golang.org/x/image v0.39.0
@@ -20,9 +20,7 @@ require (
 
 require (
 	gioui.org/shader v1.0.8 // indirect
-	github.com/ProtonMail/go-crypto v1.3.0 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
-	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-text/typesetting v0.3.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -42,7 +40,6 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/samber/lo v1.49.1 // indirect
 	github.com/tkrajina/go-reflector v0.5.8 // indirect
-	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect

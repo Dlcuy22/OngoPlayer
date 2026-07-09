@@ -5,9 +5,11 @@
   export let rpcEnabled = false;
   export let fontSize = 16;
   export let animationsEnabled = true;
+  export let streamQuality = "0";
+  export let streamCodec = "opus";
 
   const dispatch = createEventDispatcher();
-  let activeTab = "general"; // "general" | "appearance"
+  let activeTab = "general"; // "general" | "appearance" | "stream"
 
   function onFont(e) {
     dispatch("fontSize", parseInt(e.target.value, 10));
@@ -55,6 +57,13 @@
         on:click={() => (activeTab = "appearance")}
       >
         Appearance
+      </button>
+      <button
+        class="tab-item"
+        class:active={activeTab === "stream"}
+        on:click={() => (activeTab = "stream")}
+      >
+        Stream
       </button>
     </div>
 
@@ -110,6 +119,45 @@
               aria-label="Lyrics font size"
               style="--pct: {((fontSize - 12) / (32 - 12)) * 100}%"
             />
+          </div>
+        </div>
+      {:else if activeTab === "stream"}
+        <div class="tab-pane">
+          <div class="warning-banner">
+            <Icon name="alert-triangle" size={14} />
+            <span class="warning-text">Advanced settings. Only modify if you know what you are doing.</span>
+          </div>
+
+          <div class="row column">
+            <div class="row-text">
+              <span class="row-label">Audio Quality</span>
+              <span class="row-desc">yt-dlp quality level (0=best, 10=worst or specific bitrate like 128K)</span>
+            </div>
+            <input
+              type="text"
+              value={streamQuality}
+              on:input={(e) => dispatch("quality", e.target.value)}
+              placeholder="e.g. 0"
+              class="text-input"
+            />
+          </div>
+
+          <div class="row column">
+            <div class="row-text">
+              <span class="row-label">Audio Codec</span>
+              <span class="row-desc">Target format to extract from streams (opus is recommended)</span>
+            </div>
+            <select
+              value={streamCodec}
+              on:change={(e) => dispatch("codec", e.target.value)}
+              class="select-input"
+            >
+              <option value="opus">opus (best compatibility)</option>
+              <option value="mp3">mp3</option>
+              <option value="m4a">m4a</option>
+              <option value="flac">flac (lossless)</option>
+              <option value="aac">aac</option>
+            </select>
           </div>
         </div>
       {/if}
@@ -339,5 +387,38 @@
 
   input[type="range"]:hover::-webkit-slider-thumb {
     transform: scale(1.15);
+  }
+
+  .warning-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 14px 18px 6px;
+    padding: 10px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-dim);
+  }
+
+  .warning-text {
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .text-input, .select-input {
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.16s ease;
+  }
+
+  .text-input:focus, .select-input:focus {
+    border-color: var(--text-dim);
   }
 </style>

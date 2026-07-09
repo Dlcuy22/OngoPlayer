@@ -14,6 +14,10 @@ export function ClearQueue() {
   return window['go']['main']['App']['ClearQueue']();
 }
 
+export function GetConfig() {
+  return window['go']['main']['App']['GetConfig']();
+}
+
 export function GetCover(arg1) {
   return window['go']['main']['App']['GetCover'](arg1);
 }
@@ -144,4 +148,8 @@ export function SetShuffle(arg1) {
 
 export function SetVolume(arg1) {
   return window['go']['main']['App']['SetVolume'](arg1);
+}
+
+export function UpdateConfig(arg1) {
+  return window['go']['main']['App']['UpdateConfig'](arg1);
 }

@@ -22,7 +22,7 @@ import {
   SetRPCEnabled, GetRPCEnabled,
   ClearQueue, GetQueue, GetYTMArtist, GetYTMPlaylist,
   PlayYTMSong, RemoveFromQueue, ReorderQueue, SearchYTM,
-  InsertYTMSongAt,
+  InsertYTMSongAt, GetConfig, UpdateConfig,
 } from "../../wailsjs/go/main/App.js";
 import { EventsOn } from "../../wailsjs/runtime/runtime.js";
 
@@ -49,6 +49,9 @@ export const playlistDetail = writable(null);
 // Settings UI state and persisted preferences.
 export const showSettings = writable(false);
 export const rpcEnabled = writable(false);
+export const streamQuality = writable("0");
+export const streamCodec = writable("opus");
+export const dependencyDownloads = writable({}); // map of name -> progress
 
 const FONT_KEY = "ongo.lyricsFontSize";
 const FONT_MIN = 12;
@@ -90,10 +93,14 @@ frontend Svelte stores with the Go backend's audio engine state.
 	during far seeks.
 */
 export function initPlayerSync() {
-  GetVolume().then((v) => volume.set(v));
+  GetConfig().then((cfg) => {
+    volume.set(cfg.volume);
+    rpcEnabled.set(cfg.rpcEnabled);
+    streamQuality.set(cfg.streamQuality);
+    streamCodec.set(cfg.streamCodec);
+  });
   GetShuffle().then((s) => shuffle.set(s));
   GetLoopMode().then((m) => loopMode.set(m));
-  GetRPCEnabled().then((on) => rpcEnabled.set(on));
   GetQueue().then((tracks) => queue.set(tracks || []));
 
   EventsOn("playback_progress", (data) => {
@@ -118,6 +125,17 @@ export function initPlayerSync() {
 
   EventsOn("track_loading", (data) => {
     loadingIndex.set(data.index);
+  });
+
+  EventsOn("dependency_progress", (data) => {
+    dependencyDownloads.update((curr) => {
+      if (data.done) {
+        delete curr[data.name];
+      } else {
+        curr[data.name] = data.progress;
+      }
+      return { ...curr };
+    });
   });
 
   EventsOn("track_loading_finished", (data) => {
@@ -312,6 +330,25 @@ export function closeSettings() { showSettings.set(false); }
 export function setRpcEnabled(on) {
   rpcEnabled.set(on);
   SetRPCEnabled(on);
+}
+
+// updateConfig saves the current configuration to the backend.
+export function updateConfig(updates) {
+  const current = {
+    streamQuality: get(streamQuality),
+    streamCodec: get(streamCodec),
+    rpcEnabled: get(rpcEnabled),
+    volume: get(volume)
+  };
+  
+  const merged = { ...current, ...updates };
+  
+  streamQuality.set(merged.streamQuality);
+  streamCodec.set(merged.streamCodec);
+  rpcEnabled.set(merged.rpcEnabled);
+  volume.set(merged.volume);
+  
+  UpdateConfig(merged);
 }
 
 /*

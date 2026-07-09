@@ -46,6 +46,10 @@
     setLyricsFontSize,
     setAnimationsEnabled,
     navigateTo,
+    streamQuality,
+    streamCodec,
+    updateConfig,
+    dependencyDownloads,
   } from "./lib/playerStore.js";
 
   import Tracklist from "./components/Tracklist.svelte";
@@ -208,11 +212,36 @@
     rpcEnabled={$rpcEnabled}
     fontSize={$lyricsFontSize}
     animationsEnabled={$animationsEnabled}
+    streamQuality={$streamQuality}
+    streamCodec={$streamCodec}
     on:close={closeSettings}
     on:rpc={(e) => setRpcEnabled(e.detail)}
     on:fontSize={(e) => setLyricsFontSize(e.detail)}
     on:animations={(e) => setAnimationsEnabled(e.detail)}
+    on:quality={(e) => updateConfig({ streamQuality: e.detail })}
+    on:codec={(e) => updateConfig({ streamCodec: e.detail })}
   />
+{/if}
+
+{#if Object.keys($dependencyDownloads).length > 0}
+  <div class="dependency-toast">
+    <div class="toast-header">
+      <span class="toast-title">Downloading Streaming Dependencies...</span>
+    </div>
+    <div class="toast-body">
+      {#each Object.entries($dependencyDownloads) as [name, pct]}
+        <div class="dep-row">
+          <div class="dep-info">
+            <span class="dep-name">{name}</span>
+            <span class="dep-pct">{pct.toFixed(0)}%</span>
+          </div>
+          <div class="progress-bg">
+            <div class="progress-bar" style="width: {pct}%"></div>
+          </div>
+        </div>
+      {/each}
+    </div>
+  </div>
 {/if}
 
 <style>
@@ -393,5 +422,65 @@
     .sidebar {
       width: 180px;
     }
+  }
+
+  .dependency-toast {
+    position: fixed;
+    bottom: 96px;
+    right: 24px;
+    width: 280px;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    z-index: 40;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .toast-header {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .toast-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .toast-body {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dep-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .dep-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
+
+  .progress-bg {
+    width: 100%;
+    height: 4px;
+    background: var(--surface-3);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-bar {
+    height: 100%;
+    background: var(--text);
+    transition: width 0.1s linear;
   }
 </style>

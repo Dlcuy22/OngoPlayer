@@ -1,5 +1,23 @@
 export namespace main {
 	
+	export class AppConfig {
+	    streamQuality: string;
+	    streamCodec: string;
+	    rpcEnabled: boolean;
+	    volume: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.streamQuality = source["streamQuality"];
+	        this.streamCodec = source["streamCodec"];
+	        this.rpcEnabled = source["rpcEnabled"];
+	        this.volume = source["volume"];
+	    }
+	}
 	export class SearchContinuationResult {
 	    items: any[];
 	    nextToken?: string;

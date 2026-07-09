@@ -30,6 +30,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"math/rand"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -43,8 +44,8 @@ import (
 	"github.com/dlcuy22/OngoPlayer/internal/logging"
 	"github.com/dlcuy22/OngoPlayer/internal/service/discordrpc"
 	"github.com/dlcuy22/OngoPlayer/internal/service/lyrics"
+	"github.com/dlcuy22/OngoPlayer/internal/service/ytdl"
 	"github.com/dlcuy22/ytm-go"
-	"github.com/lrstanley/go-ytdlp"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -102,6 +103,13 @@ type activeDownload struct {
 	filePath string
 }
 
+type AppConfig struct {
+	StreamQuality string `json:"streamQuality"`
+	StreamCodec   string `json:"streamCodec"`
+	RPCEnabled    bool   `json:"rpcEnabled"`
+	Volume        int    `json:"volume"`
+}
+
 type App struct {
 	ctx context.Context
 
@@ -119,7 +127,9 @@ type App struct {
 	rpcEnabled bool
 
 	ytmClient  *ytm.Client
+	ytdlClient *ytdl.Downloader
 	ytdlpReady bool
+	config     AppConfig
 
 	playSessionID     uint64
 	activeDownloads   map[string]*activeDownload
@@ -135,13 +145,16 @@ func NewApp() *App {
 		println("audio engine init failed:", err.Error())
 		os.Exit(1)
 	}
-	return &App{
+	app := &App{
 		engine:          engine,
 		current:         -1,
 		volume:          100,
 		ytmClient:       ytm.NewClient(),
 		activeDownloads: make(map[string]*activeDownload),
 	}
+	app.loadConfig()
+	app.ytdlClient = ytdl.NewDownloader(getExeDir())
+	return app
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -156,11 +169,18 @@ func (a *App) startup(ctx context.Context) {
 	_ = os.MkdirAll("./cache", 0755)
 
 	go func() {
-		logInfo("checking/installing go-ytdlp dependencies...")
-		if _, err := ytdlp.InstallAll(context.Background()); err != nil {
-			logInfo("ytdlp installation warning: %v", err)
+		logInfo("checking/installing dependencies...")
+		err := a.ytdlClient.CheckAndInstall(context.Background(), func(name string, pct float64, done bool) {
+			runtime.EventsEmit(ctx, "dependency_progress", map[string]any{
+				"name":     name,
+				"progress": pct,
+				"done":     done,
+			})
+		})
+		if err != nil {
+			logError("dependency installation failed: %v", err)
 		} else {
-			logInfo("ytdlp dependencies are ready.")
+			logInfo("dependencies are ready.")
 			a.mu.Lock()
 			a.ytdlpReady = true
 			a.mu.Unlock()
@@ -386,19 +406,16 @@ func (a *App) ensureYTMSong(songID string) (string, error) {
 		}
 	}
 
-	dl := ytdlp.New().
-		Format("bestaudio").
-		ExtractAudio().
-		AudioFormat("opus").
-		AudioQuality("0").
-		Output(cachePath).
-		NoPlaylist()
+	a.mu.Lock()
+	quality := a.config.StreamQuality
+	codec := a.config.StreamCodec
+	a.mu.Unlock()
 
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := dl.Run(ctx, "https://www.youtube.com/watch?v="+songID)
+		err := a.ytdlClient.DownloadSong(ctx, songID, cachePath, quality, codec)
 		if err != nil {
-			logInfo("ytdlp download error for %s: %v", songID, err)
+			logError("ytdlp download error for %s: %v", songID, err)
 			errCh <- err
 			return
 		}
@@ -591,7 +608,11 @@ func (a *App) SetRPCEnabled(on bool) {
 		return
 	}
 	a.rpcEnabled = on
+	a.config.RPCEnabled = on
+	a.mu.Unlock()
+	a.saveConfig()
 
+	a.mu.Lock()
 	if !on {
 		rpc := a.rpc
 		a.rpc = nil
@@ -835,7 +856,9 @@ func (a *App) SetVolume(vol int) {
 	}
 	a.mu.Lock()
 	a.volume = vol
+	a.config.Volume = vol
 	a.mu.Unlock()
+	a.saveConfig()
 	a.engine.SetVolume(vol)
 }
 
@@ -1362,6 +1385,77 @@ func (a *App) CancelAllDownloads() {
 	for _, dlState := range a.activeDownloads {
 		dlState.cancel()
 		_ = os.Remove(dlState.filePath)
+	}
+}
+
+func (a *App) GetConfig() AppConfig {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.config
+}
+
+func (a *App) UpdateConfig(cfg AppConfig) {
+	a.mu.Lock()
+	a.config = cfg
+	a.volume = cfg.Volume
+	a.rpcEnabled = cfg.RPCEnabled
+	a.mu.Unlock()
+	
+	a.saveConfig()
+	
+	if a.engine != nil {
+		a.engine.SetVolume(cfg.Volume)
+	}
+	a.SetRPCEnabled(cfg.RPCEnabled)
+}
+
+func getExeDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "."
+	}
+	return filepath.Dir(exe)
+}
+
+func (a *App) loadConfig() {
+	exeDir := getExeDir()
+	configPath := filepath.Join(exeDir, "config.json")
+	
+	a.config = AppConfig{
+		StreamQuality: "0",
+		StreamCodec:   "opus",
+		RPCEnabled:    false,
+		Volume:        100,
+	}
+	
+	data, err := os.ReadFile(configPath)
+	if err == nil {
+		var loaded AppConfig
+		if errUnmarshal := json.Unmarshal(data, &loaded); errUnmarshal == nil {
+			if loaded.StreamQuality != "" {
+				a.config.StreamQuality = loaded.StreamQuality
+			}
+			if loaded.StreamCodec != "" {
+				a.config.StreamCodec = loaded.StreamCodec
+			}
+			a.config.RPCEnabled = loaded.RPCEnabled
+			if loaded.Volume > 0 && loaded.Volume <= 100 {
+				a.config.Volume = loaded.Volume
+			}
+		}
+	}
+	
+	a.volume = a.config.Volume
+	a.rpcEnabled = a.config.RPCEnabled
+}
+
+func (a *App) saveConfig() {
+	exeDir := getExeDir()
+	configPath := filepath.Join(exeDir, "config.json")
+	
+	data, err := json.MarshalIndent(a.config, "", "  ")
+	if err == nil {
+		_ = os.WriteFile(configPath, data, 0644)
 	}
 }
 

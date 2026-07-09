@@ -9,6 +9,8 @@ export function CancelAllDownloads():Promise<void>;
 
 export function ClearQueue():Promise<Array<main.TrackInfo>>;
 
+export function GetConfig():Promise<main.AppConfig>;
+
 export function GetCover(arg1:number):Promise<string>;
 
 export function GetCurrentTrack():Promise<main.TrackInfo>;
@@ -74,3 +76,5 @@ export function SetRPCEnabled(arg1:boolean):Promise<void>;
 export function SetShuffle(arg1:boolean):Promise<void>;
 
 export function SetVolume(arg1:number):Promise<void>;
+
+export function UpdateConfig(arg1:main.AppConfig):Promise<void>;
