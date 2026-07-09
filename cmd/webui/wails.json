@@ -9,5 +9,12 @@
   "author": {
     "name": "Dlcuy22",
     "email": "stellebelobog@gmail.com"
+  },
+  "info": {
+    "companyName": "Dlcuy22",
+    "productName": "OngoPlayer",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright 2026",
+    "comments": "Minimalist audio player"
   }
 }

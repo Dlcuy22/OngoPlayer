@@ -7,7 +7,7 @@ require (
 	github.com/axrona/go-discordrpc v1.1.0-1
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
 	github.com/dlcuy22/OngoPlayer/Audioengine v0.0.0-00010101000000-000000000000
-	github.com/dlcuy22/ytm-go v1.0.1
+	github.com/dlcuy22/ytm-go v1.1.0
 	github.com/ebitengine/purego v0.10.0
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/ulikunitz/xz v0.5.15

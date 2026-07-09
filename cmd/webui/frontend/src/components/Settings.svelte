@@ -162,6 +162,10 @@
         </div>
       {/if}
     </div>
+    <div class="panel-foot">
+      <span>OngoPlayer</span>
+      <span>v1.0.0</span>
+    </div>
   </div>
 </div>
 
@@ -218,6 +222,17 @@
   .close:hover {
     color: var(--text);
     background: var(--surface-2);
+  }
+
+  .panel-foot {
+    padding: 10px 18px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--surface-1);
   }
 
   /* Tabs styling */

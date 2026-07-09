@@ -49,6 +49,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+const AppVersion = "1.0.0"
+
 var log = logging.NewLogger("webui")
 
 func logInfo(msg string, args ...any) {
@@ -158,6 +160,7 @@ func NewApp() *App {
 }
 
 func (a *App) startup(ctx context.Context) {
+	logInfo("OngoPlayer version %s", AppVersion)
 	logInfo("ytm-go version %s", ytm.Version)
 	a.ctx = ctx
 	if a.engine == nil {

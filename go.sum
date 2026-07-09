@@ -15,8 +15,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8 h1:OtSeLS5y0Uy01jaKK4mA/WVIYtpzVm63vLVAPzJXigg=
 github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8/go.mod h1:apkPC/CR3s48O2D7Y++n1XWEpgPNNCjXYga3PPbJe2E=
-github.com/dlcuy22/ytm-go v1.0.1 h1:XN9wp7N3vb15xCC6X0vPo8v/yqpDDsObqjteOqsjdck=
-github.com/dlcuy22/ytm-go v1.0.1/go.mod h1:TaivXqY6Vqv9A2ybOooua0NI0YPk/59rYk4Vc1gnMu4=
+github.com/dlcuy22/ytm-go v1.1.0 h1:ypmHHzjTl+f/tGU5wEM21x/PfIYExqbc63zKgU4NMwU=
+github.com/dlcuy22/ytm-go v1.1.0/go.mod h1:TaivXqY6Vqv9A2ybOooua0NI0YPk/59rYk4Vc1gnMu4=
 github.com/ebitengine/purego v0.10.0 h1:QIw4xfpWT6GWTzaW5XEKy3HXoqrJGx1ijYHzTF0/ISU=
 github.com/ebitengine/purego v0.10.0/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
 github.com/go-ole/go-ole v1.3.0 h1:Dt6ye7+vXGIKZ7Xtk4s6/xVdGDQynvom7xCFEdWr6uE=

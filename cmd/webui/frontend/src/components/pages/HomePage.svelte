@@ -22,7 +22,7 @@
     <div class="logo-outer">
       <Icon name="music" size={40} strokeWidth={1.5} />
     </div>
-    <h1>OngoPlayer</h1>
+    <h1>OngoPlayer <span class="version-badge">v1.0.0</span></h1>
     <p>Minimalist local library & YouTube Music player.</p>
   </div>
 
@@ -218,5 +218,17 @@
     margin-top: 4px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+
+  .version-badge {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-dim);
+    background: var(--surface-2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    vertical-align: middle;
+    margin-left: 6px;
+    border: 1px solid var(--border);
   }
 </style>
