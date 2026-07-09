@@ -68,7 +68,7 @@ jobs:
 
     - name: install dependencies (Windows)
       if: matrix.os == 'windows-latest'
-      run: choco install mingw make webview2-runtime 7zip.portable && npm install -g pnpm
+      run: choco install mingw make webview2-runtime 7zip.portable nsis && npm install -g pnpm
 
     - name: install dependencies (Linux)
       if: matrix.os == 'ubuntu-latest'
@@ -120,6 +120,13 @@ jobs:
         name: build-windows
         path: build-windows.zip
 
+    - name: Upload Windows Installer
+      if: matrix.os == 'windows-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-windows-installer
+        path: build/bin/*installer.exe
+
     - name: Upload Linux Artifacts
       if: matrix.os == 'ubuntu-latest'
       uses: actions/upload-artifact@v4
@@ -148,4 +155,4 @@ jobs:
       run: |
         RELEASE_DATE=$(date +'%Y-%m-%d')
         gh release delete nightly --yes --cleanup-tag || true
-        gh release create nightly build-windows.zip build-linux.tar.gz --title "OngoPlayer nightly build $RELEASE_DATE" --notes "Automated nightly build for $RELEASE_DATE" --prerelease
+        gh release create nightly build-windows.zip build-linux.tar.gz *installer.exe --title "OngoPlayer nightly build $RELEASE_DATE" --notes "Automated nightly build for $RELEASE_DATE" --prerelease

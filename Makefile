@@ -14,6 +14,7 @@ DSP_TARGET := stelle_dsp$(DSP_EXT)
 DSP_FLAGS  := -fPIC
 WTAGS     := -tags webkit2_41
 DEBUG_FLAGS :=
+BUILD_FLAGS :=
 endif
 
 ifneq (,$(findstring MINGW,$(UNAME_S))$(findstring MSYS,$(UNAME_S)))
@@ -24,6 +25,7 @@ DSP_TARGET := stelle_dsp$(DSP_EXT)
 DSP_FLAGS  :=
 WTAGS     :=
 DEBUG_FLAGS := -windowsconsole
+BUILD_FLAGS := -nsis
 endif
 
 ifeq ($(UNAME_S),Windows_NT)
@@ -34,6 +36,7 @@ DSP_TARGET := stelle_dsp$(DSP_EXT)
 DSP_FLAGS  :=
 WTAGS     :=
 DEBUG_FLAGS := -windowsconsole
+BUILD_FLAGS := -nsis
 endif
 
 ifeq ($(UNAME_S),Darwin)
@@ -44,6 +47,7 @@ DSP_TARGET := stelle_dsp$(DSP_EXT)
 DSP_FLAGS  := -fPIC
 WTAGS     :=
 DEBUG_FLAGS :=
+BUILD_FLAGS :=
 endif
 
 
@@ -58,7 +62,7 @@ build-dsp:
 all: build build-debug
 
 build: clean build-dsp
-	cd $(WEBUI_DIR) && wails build $(WTAGS) -o $(APP_NAME)
+	cd $(WEBUI_DIR) && wails build $(WTAGS) $(BUILD_FLAGS) -o $(APP_NAME)
 	mv $(WEBUI_DIR)/build/bin/* $(BUILD_DIR)/
 
 build-debug: build-dsp
