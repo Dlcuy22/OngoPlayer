@@ -75,6 +75,14 @@ jobs:
         sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev build-essential pkg-config make
         npm install -g pnpm
       
+    - name: Setup SDL3 (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      uses: libsdl-org/setup-sdl@main
+      id: sdl
+      with:
+        version: 3-latest
+        install-linux-dependencies: true
+
     - name: Stage SDL3.dll for build (Windows)
       if: matrix.os == 'windows-latest'
       shell: pwsh
@@ -86,6 +94,8 @@ jobs:
         Copy-Item "$env:TEMP\SDL3\SDL3.dll" "cmd\webui\SDL3.dll" -Force
 
     - name: build
+      env:
+        LD_LIBRARY_PATH: ${{ steps.sdl.outputs.prefix }}/lib
       run:  make
 
     - name: get runtime dependencies (Windows)
