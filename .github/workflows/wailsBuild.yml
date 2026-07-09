@@ -57,7 +57,7 @@ jobs:
       with:
         node-version: 22
     - name: install dependencies
-      run: choco install mingw make webview2-runtime && npm install -g pnpm
+      run: choco install mingw make webview2-runtime 7zip.portable && npm install -g pnpm
 
     #- name: garble
     #  run: go install mvdan.cc/garble@latest   
@@ -83,11 +83,8 @@ jobs:
       run: go run tools/download_win_deps.go
 
     - name: Compress Build Artifacts
-      uses: somaz94/compress-decompress@v1
-      with:
-        type: 'zip'
-        path: 'build/bin'
-        output: 'build-windows.zip'
+      shell: pwsh
+      run: 7z a -tzip build-windows.zip build/bin
 
     - uses: actions/upload-artifact@v4
       with:
