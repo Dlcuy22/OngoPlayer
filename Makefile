@@ -14,7 +14,7 @@ DSP_FLAGS  := -fPIC
 WTAGS     := -tags webkit2_41
 endif
 
-ifeq ($(UNAME_S),Windows)
+ifneq (,$(findstring MINGW,$(UNAME_S))$(findstring MSYS,$(UNAME_S)))
 APP_NAME  := OngoPlayer.exe
 DSP_EXT    := .dll
 DSP_TARGET := stelle_dsp$(DSP_EXT)
