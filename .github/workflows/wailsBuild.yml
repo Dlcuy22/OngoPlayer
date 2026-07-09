@@ -1,0 +1,75 @@
+name: WailsBuild
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '**/*.md'
+      - .gitignore
+      - .editorconfig
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - .gitignore
+      - .editorconfig
+
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/cache@v3
+      with:
+        path: |
+          ~\AppData\Local\go-build
+          ~\go\pkg\mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+          
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.26.x
+
+    - name: install wails
+      run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+    - name: install node
+      uses: actions/setup-node@v3
+      with:
+        node-version: 22
+    - name: install dependencies
+      run: choco install mingw make webview2-runtime && npm install -g pnpm
+
+    #- name: garble
+    #  run: go install mvdan.cc/garble@latest   
+      
+    #- name: nsis
+    # run: choco install nsis 
+      
+    #- name: upx
+    #  run: choco install upx  
+      
+    - name: build
+      run:  make build
+    - name: get runtime dependencies
+      run: go run tools/download_win_deps.go
+      
+    - name: Compress Build Artifacts
+      uses: somaz94/compress-decompress@v1
+      with:
+        type: 'zip'
+        path: 'build/bin'
+        output: 'build-windows.zip'
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: debug-${{ runner.os }}
+        path: build-windows.zip
+      
+      
+      
+      
+      

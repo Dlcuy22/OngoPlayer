@@ -11,6 +11,7 @@ package stelleengine
 
 import (
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -20,6 +21,8 @@ import (
 	AudioEngine "github.com/dlcuy22/OngoPlayer/Audioengine"
 	"github.com/jupiterrider/purego-sdl3/sdl"
 )
+
+var stelleLog = slog.With("sub", "stelle")
 
 type StelleEngine struct {
 	mu         sync.Mutex
@@ -46,6 +49,9 @@ func NewStelleEngine(volume float32) (*StelleEngine, error) {
 	if !sdl.Init(sdl.InitAudio) {
 		return nil, fmt.Errorf("failed to init SDL audio: %s", sdl.GetError())
 	}
+
+	ProbeCodecs()
+	stelleLog.Info("engine initialized", "volume", volume)
 
 	return &StelleEngine{
 		state:  AudioEngine.StateStopped,

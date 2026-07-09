@@ -1,3 +1,4 @@
+// Deprecated: ongoplayer development has moved to cmd/webui. This TUI client is no longer maintained.
 package main
 
 import (

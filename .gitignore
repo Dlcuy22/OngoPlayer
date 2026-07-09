@@ -1,7 +1,6 @@
 sample
 test/
 *.exe
-build/*
 internal/ui/gio/reference
 *.syso
 tools/build
@@ -13,4 +12,4 @@ Skills
 reference/
 cmd/webui/cache
 cmd/webui/lyrics
-.opencode
+build/bin

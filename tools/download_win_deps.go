@@ -43,7 +43,7 @@ func main() {
 	keepDownloads := flag.Bool("keep-downloads", false, "Keep downloaded archives in build/.downloads")
 	flag.Parse()
 
-	buildDir := "./build/win"
+	buildDir := "./build/bin"
 
 	libsExtractDir := filepath.Join(buildDir, "libs")
 	flacExtractDir := filepath.Join(buildDir, "lib")

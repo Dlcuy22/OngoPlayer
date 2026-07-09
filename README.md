@@ -1,115 +1,42 @@
 # OngoPlayer [![](https://github.com/Dlcuy22/OngoPlayer/actions/workflows/build.yml/badge.svg)](https://github.com/Dlcuy22/OngoPlayer/actions/workflows/build.yml)
 
-![OngoPlayer Demo](.github/assets/ongoplayer-demo-newui.webp)
+![OngoPlayer Demo](.github/assets/ongoplayer-demo-webui.webp)
 
 A dead simple music player that just works.
-
----
-
-## How it works
-
-OngoPlayer uses [purego](https://github.com/ebitengine/purego) to call native audio libraries directly at runtime, with no CGo involved. The GUI is built with [Gio](https://gioui.org), an immediate-mode GUI toolkit written in pure Go (not to be confused with the purego library mentioned above). Together they keep the binary small, the build simple, and the runtime lean.
-
-### Why C libraries for audio?
-
-Every mature audio codec implementation (MP3, Opus, Vorbis, FLAC) is written in C. Reimplementing them in Go would mean slower decoding, missing edge-case handling, and a maintenance burden that isn't worth taking on. purego lets OngoPlayer use the real implementations without a CGo compile step, so the codec work happens in the system libraries and the Go code stays clean.
-
----
+for the audio backend OngoPlayer uses [purego](https://github.com/ebitengine/purego) to call native audio libraries directly at runtime, with no CGo involved. 
+for the frontend OngoPlayer uses wails with svelte
 
 ## Features
-
-- **Synced lyrics**: loads `.lrc` files from disk; falls back to the [LRClib API](https://lrclib.net) if none is found, with auto-wrap and scroll.
-- **Audio format support**: MP3, Opus, Ogg Vorbis, FLAC, via libmpg123, libopusfile, libvorbisfile, and libFLAC.
-- **Native folder picker**: XDG Desktop Portal over D-Bus on Linux; WinAPI on Windows.
-- **CJK font support**: full Unicode rendering for lyric content.
-- **Cover art caching**, responsive layout, wide track view.
+- Plays local audio files (MP3, Opus, Vorbis, FLAC)
+- streams from online source like Youtube
+- Automatic lyric resolver from https://lrclib.net
+- Clean and lightweight web UI for controlling playback and managing playlists
 
 ---
 
-## Linux
+## Build
+OngoPlayer main frontend is build using [wails](https://wails.io/) you may need to go to their site to learn more about how to build the app in your dev environment.
 
-### Build dependencies
+- [Wails installation instructions](https://wails.io/docs/gettingstarted/installation)
+- [Wails cli reference](https://wails.io/docs/reference/cli)
 
-Gio requires development headers for its GPU and windowing backends. Install these before building:
+for linux specifically on fedora 43 (my environment) you need to install this package:
 
-**Debian / Ubuntu:**
+`webkit2gtk4.1-devel`
 
-```bash
-sudo apt install gcc pkg-config \
-  libwayland-dev libx11-dev libx11-xcb-dev \
-  libxkbcommon-x11-dev libxcursor-dev \
-  libgles2-mesa-dev libegl1-mesa-dev \
-  libffi-dev libvulkan-dev
-```
+and run wails dev and wails build with `-tags webkit2_41`.
+on wails doctor, if you see the libwebkit column said "not found" just ignore it, just make sure you are using `-tags webkit2_41`.
 
-**Arch Linux:**
-
-```bash
-sudo pacman -S base-devel wayland libx11 libxkbcommon libxcursor \
-  mesa vulkan-headers
-```
-
-**Fedora / RHEL:**
-
-```bash
-sudo dnf install gcc pkg-config wayland-devel libX11-devel \
-  libxkbcommon-x11-devel libXcursor-devel \
-  mesa-libGLES-devel mesa-libEGL-devel \
-  libffi-devel vulkan-headers
-```
-
-Vulkan support is optional but recommended for best rendering performance. You can verify it with `vulkaninfo`. On distributions like Arch, a Vulkan driver is not installed automatically; check your GPU vendor's package (`vulkan-radeon`, `vulkan-intel`, etc.).
+you may need pnpm package manager for installing the frontend dependencies, you can install it from [pnpm.io](https://pnpm.io/installation). you also need a C compiler to build the libdsp, you can install [w64devkit](https://github.com/skeeto/w64devkit) for windows or gcc for linux.
 
 ### Runtime dependencies (audio codecs)
+the app need these runtime dependencies to play audio files: 
+libvorbisfile, libopusfile, libmpg123, libflac and sdl3 
+On linux these package usually comes built in, if one of them missing you can install it from your package manager, the app debug will tell you which one is missing.
 
-Because OngoPlayer loads codec libraries at runtime via purego, they do not need to be present at build time, only when you run the app. Install the shared libraries for whichever formats you want to play:
+On windows you **do not need to download any of these dependencies**, it comes built in on the installer.
 
-| Library                            | Format                          |
-| ---------------------------------- | ------------------------------- |
-| `libmpg123.so.0`                   | MP3                             |
-| `libopusfile.so.0`                 | Opus                            |
-| `libvorbisfile.so.3`               | Ogg Vorbis                      |
-| `libFLAC.so.14` or `libFLAC.so.12` | FLAC                            |
-| `libSDL3.so.0`                     | audio stream backend (required) |
+## Download
+You can download the latest build release from the [release](https://github.com/Dlcuy22/OngoPlayer/releases) page or go to the actions and download it from the latest build artifacts.
 
-**Debian / Ubuntu:**
-
-```bash
-sudo apt install libmpg123-0 libopusfile0 libvorbisfile3 libflac12 libsdl3-0
-```
-
-**Arch Linux:**
-
-```bash
-sudo pacman -S mpg123 opusfile libvorbis flac sdl3
-```
-
-**Fedora / RHEL:**
-
-```bash
-sudo dnf install mpg123-libs opusfile libvorbis flac-libs SDL3
-```
-
-SDL3 integrates with PulseAudio and PipeWire automatically. During development you can force a specific backend with `SDL_AUDIODRIVER=pulseaudio`.
-
----
-
-## Windows
-
-A packaged Windows installer is in development. It will bundle SDL3.dll and the required codec DLLs, so no manual setup will be needed.
-
----
-
-## Roadmap
-
-- [x] GPU-accelerated GUI via Gio
-- [x] Synced lyric resolver and viewer (LRClib)
-- [x] FLAC support
-- [x] CJK font rendering
-- [ ] Keyboard shortcuts (space, arrow keys, etc.)
-- [ ] Online music streaming via yt-dlp (YouTube Music)
-- [ ] Right panel with tabbed equalizer and settings
-
----
-
-**Status:** early-stage, in active development.
+Status: The app is still in early development, many features are not yet implemented, and the app may have bugs. Please report any issues you encounter on the [issues](https://github.com/Dlcuy22/OngoPlayer/issues) page.

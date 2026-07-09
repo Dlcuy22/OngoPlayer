@@ -1,66 +1,50 @@
 # MAKEFILE FOR ONGOPLAYER
-# Build targets for Linux and Windows, GUI (Gio) and WebUI modes
-# Usage:
-#   make dev          - Run GUI in dev mode (Linux)
-#   make dev-webui    - Run WebUI in dev mode
-#   make build        - Build all Linux binaries
-#   make build-windows- Cross-compile all Windows binaries
-#   make clean        - Remove build artifacts
 
+default: build
+
+BUILD_DIR := build/bin
+WEBUI_DIR  := cmd/webui
+UNAME_S := $(shell uname -s)
+CC := gcc
+ifeq ($(UNAME_S),Linux)
 APP_NAME  := OngoPlayer
-BUILD_DIR := build
-WAYVULKAN_TAGS := nox11,noopengl
-WAYOPENGL_TAGS := nox11
-X11GL_TAGS := nowayland
+DSP_EXT    := .so
+DSP_TARGET := stelle_dsp$(DSP_EXT)
+DSP_FLAGS  := -fPIC
+WTAGS     := -tags webkit2_41
+endif
 
-.PHONY: dev dev-debug dev-webui
+ifeq ($(UNAME_S),Windows)
+APP_NAME  := OngoPlayer.exe
+DSP_EXT    := .dll
+DSP_TARGET := stelle_dsp$(DSP_EXT)
+DSP_FLAGS  :=
+WTAGS     :=
+endif
+
+ifeq ($(UNAME_S),Darwin)
+APP_NAME  := OngoPlayer
+DSP_EXT    := .dylib
+DSP_TARGET := stelle_dsp$(DSP_EXT)
+DSP_FLAGS  := -fPIC
+WTAGS     :=
+endif
+
 
 dev:
-	SDL_AUDIODRIVER=pulseaudio go run --tags "nowayland noopengl" cmd/gui/main.go --debug
+	$(MAKE) build-dsp
+	cd $(WEBUI_DIR) && wails dev $(WTAGS)
 
-dev-wayvulkan:
-	SDL_AUDIODRIVER=pulseaudio go run --tags nox11,noopengl cmd/gui/main.go  --debug --playlist "/home/kasaki/Music/agak fayer"
-
-dev-webui:
-	cd cmd/webui && wails dev
-
-dev-windows: 
-	go run cmd/gui/main.go --playlist "C:/Users/Hitori/Music/Mix random jpop" --rpc --debug
-
-.PHONY: build build-linux-gui build-webview-gui build-dsp-linux build-dsp-windows
-
-build-dsp-linux:
+build-dsp:
 	mkdir -p $(BUILD_DIR)
-	$(CC) -O3 -shared -fPIC -ffast-math -o $(BUILD_DIR)/stelle_dsp.so Audioengine/StelleEngine/dsp/stelle_dsp.c
+	$(CC) -O3 -shared $(DSP_FLAGS) -ffast-math -o $(BUILD_DIR)/$(DSP_TARGET) Audioengine/StelleEngine/dsp/stelle_dsp.c
 
-build-dsp-windows:
-	mkdir -p build/win
-	gcc -O3 -shared -ffast-math -o build/win/stelle_dsp.dll Audioengine/StelleEngine/dsp/stelle_dsp.c
+build: clean build-dsp
+	cd $(WEBUI_DIR) && wails build $(WTAGS) -o $(APP_NAME)
+	mv $(WEBUI_DIR)/build/bin/* $(BUILD_DIR)/
 
-build: build-dsp-linux build-linux-gui
+.PHONY: default all build
 
-build-linux-gui:
-	GOOS=linux GOARCH=amd64 go build $(WAYVULKAN_TAGS) \
-		-o $(BUILD_DIR)/$(APP_NAME)-gui ./cmd/gui
-
-.PHONY: build-windows build-windows-gui build-webview-gui
-
-build-windows: build-dsp-windows build-windows-gui build-webview-gui
-
-build-windows-gui:
-	GOOS=windows GOARCH=amd64 go build \
-		-o $(BUILD_DIR)/$(APP_NAME)-gui.exe ./cmd/gui
-
-build-windows-release:
-	gogio -target windows -icon .\cmd\gui\assets\appicon.png -o build\win\OngoPlayer.exe ./cmd/gui
-	
-build-webview-gui:
-	cd cmd/webui && wails build -platform windows/amd64 -o ../../$(BUILD_DIR)/$(APP_NAME)-webview.exe
-
-
-.PHONY: all
-all: build build-windows
-	
 .PHONY: clean
 clean:
 	rm -rf $(BUILD_DIR)

@@ -16,6 +16,7 @@ package stelleengine
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -26,6 +27,8 @@ import (
 	"github.com/dlcuy22/OngoPlayer/Audioengine/loader"
 	"github.com/ebitengine/purego"
 )
+
+var flacLog = slog.With("sub", "flac")
 
 var (
 	flacOnce    sync.Once
@@ -71,10 +74,10 @@ func initFlacBindings() error {
 		for _, fn := range filenames {
 			lib, err = loader.Load(fn)
 			if err == nil {
-				fmt.Printf("Loaded FLAC library: %s\n", fn)
+				flacLog.Info("loaded library", "path", fn)
 				break
 			} else {
-				fmt.Printf("Failed to load FLAC library: %s (%v)\n", fn, err)
+				flacLog.Warn("failed to load library", "path", fn, "error", err)
 			}
 		}
 

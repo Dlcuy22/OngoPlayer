@@ -29,7 +29,6 @@ import (
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
-	"log"
 	"math/rand"
 	"net/http"
 	"os"
@@ -41,6 +40,7 @@ import (
 	AudioEngine "github.com/dlcuy22/OngoPlayer/Audioengine"
 	"github.com/dlcuy22/OngoPlayer/Audioengine/MetaResolver"
 	stelleengine "github.com/dlcuy22/OngoPlayer/Audioengine/StelleEngine"
+	"github.com/dlcuy22/OngoPlayer/internal/logging"
 	"github.com/dlcuy22/OngoPlayer/internal/service/discordrpc"
 	"github.com/dlcuy22/OngoPlayer/internal/service/lyrics"
 	"github.com/dlcuy22/ytm-go"
@@ -48,19 +48,14 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// debugEnabled gates verbose logging; set ONGO_DEBUG=1 (any non-empty value).
-var debugEnabled = os.Getenv("ONGO_DEBUG") != ""
+var log = logging.NewLogger("webui")
 
-// logInfo writes an always-on log line tagged for the webui subsystem.
-func logInfo(format string, args ...any) {
-	log.Printf("[webui] "+format, args...)
+func logInfo(msg string, args ...any) {
+	log.Info(fmt.Sprintf(msg, args...))
 }
 
-// logDebug writes a log line only when ONGO_DEBUG is set.
-func logDebug(format string, args ...any) {
-	if debugEnabled {
-		log.Printf("[webui][debug] "+format, args...)
-	}
+func logDebug(msg string, args ...any) {
+	log.Debug(fmt.Sprintf(msg, args...))
 }
 
 // LoopMode enumerates the repeat behavior at end-of-track.
@@ -140,7 +135,7 @@ func (a *App) startup(ctx context.Context) {
 	if a.engine == nil {
 		return
 	}
-	logInfo("startup (debug logging: %v)", debugEnabled)
+	logInfo("startup (debug logging: %v)", logging.DebugEnabled())
 	
 	// Create cache folder for streaming
 	_ = os.MkdirAll("./cache", 0755)

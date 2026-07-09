@@ -24,12 +24,14 @@ package discordrpc
 
 import (
 	"image"
-	"log"
 	"sync"
 	"time"
 
 	"github.com/axrona/go-discordrpc/client"
+	"github.com/dlcuy22/OngoPlayer/internal/logging"
 )
+
+var log = logging.NewLogger("discordrpc")
 
 const (
 	AppID         = "1498082439925334108"
@@ -96,7 +98,7 @@ func (m *Manager) Update(track TrackInfo) {
 
 func (m *Manager) loop() {
 	if err := m.connect(); err != nil {
-		log.Printf("[discordrpc] initial connect failed: %v, will retry", err)
+		log.Error("initial connect failed, will retry", "error", err)
 	}
 
 	syncTicker := time.NewTicker(syncInterval)
@@ -141,7 +143,7 @@ func (m *Manager) loop() {
 		case <-retryTicker.C:
 			if !m.connected {
 				if err := m.connect(); err != nil {
-					log.Printf("[discordrpc] reconnect failed: %v", err)
+					log.Error("reconnect failed", "error", err)
 				} else {
 					m.mu.Lock()
 					track := m.current
@@ -160,7 +162,7 @@ func (m *Manager) connect() error {
 		return err
 	}
 	m.connected = true
-	log.Println("[discordrpc] connected to Discord")
+	log.Info("connected to Discord")
 	return nil
 }
 
@@ -182,7 +184,7 @@ func (m *Manager) setActivity(track TrackInfo) {
 	} else if track.Cover != nil {
 		url, err := m.uploader.GetImageURL(track.Cover)
 		if err != nil {
-			log.Printf("[discordrpc] image upload failed: %v", err)
+			log.Error("image upload failed", "error", err)
 		} else {
 			largeImage = url
 			if track.Album != "" {
@@ -228,12 +230,12 @@ func (m *Manager) setActivity(track TrackInfo) {
 		Timestamps: timestamps,
 	}
 
-	log.Printf("[discordrpc] setActivity: details=%q state=%q largeImage=%q", details, state, largeImage)
+	log.Debug("setActivity", "details", details, "state", state, "largeImage", largeImage)
 
 	if err := m.discord.SetActivity(activity); err != nil {
-		log.Printf("[discordrpc] SetActivity failed: %v", err)
+		log.Error("SetActivity failed", "error", err)
 		m.connected = false
 	} else {
-		log.Println("[discordrpc] SetActivity success")
+		log.Info("SetActivity success")
 	}
 }
