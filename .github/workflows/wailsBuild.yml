@@ -19,6 +19,8 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v3
+      with:
+        submodules: recursive
     - uses: actions/cache@v3
       with:
         path: |
@@ -27,6 +29,20 @@ jobs:
         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
         restore-keys: |
           ${{ runner.os }}-go-
+
+    - uses: actions/cache@v3
+      with:
+        path: C:\ProgramData\chocolatey\cache
+        key: ${{ runner.os }}-choco-${{ hashFiles('.github/workflows/wailsBuild.yml') }}
+        restore-keys: |
+          ${{ runner.os }}-choco-
+
+    - uses: actions/cache@v3
+      with:
+        path: ~\AppData\Roaming\npm
+        key: ${{ runner.os }}-npm-global-${{ hashFiles('.github/workflows/wailsBuild.yml') }}
+        restore-keys: |
+          ${{ runner.os }}-npm-global-
           
     - name: Set up Go
       uses: actions/setup-go@v3
