@@ -526,6 +526,17 @@ event, tagged with the track index so the UI can ignore stale results.
 	      track: the track to resolve lyrics for (value copy, goroutine-safe)
 */
 func (a *App) resolveLyrics(track TrackInfo) {
+	// Debounce to avoid API spam during skipping, and prevent races with track_changed event
+	time.Sleep(350 * time.Millisecond)
+
+	a.mu.Lock()
+	if a.current < 0 || a.current >= len(a.queue) || a.queue[a.current].Path != track.Path {
+		a.mu.Unlock()
+		return
+	}
+	a.mu.Unlock()
+
+	logInfo("lyrics: resolving lyric for %+v", track)
 	musicDir := filepath.Dir(track.Path)
 
 	emit := func(lines []lyrics.Line, source string) {
